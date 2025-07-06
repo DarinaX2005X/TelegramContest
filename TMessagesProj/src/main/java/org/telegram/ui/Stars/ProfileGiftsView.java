@@ -333,7 +333,6 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
         canvas.clipRect(0, 0, getWidth(), expandY);
 
         final float acx = ax + aw / 2.0f;
-        final float cacx = Math.min(acx, dp(48));
         final float acy = ay + ah / 2.0f;
         final float ar = Math.min(aw, ah) / 2.0f + dp(6);
         final float cx = getWidth() / 2.0f;
@@ -344,80 +343,44 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             final Gift gift = gifts.get(i);
             final float alpha = gift.animatedFloat.set(1.0f);
             final float scale = lerp(0.5f, 1.0f, alpha);
-            final int index = i; // gifts.size() == maxCount ? i - 1 : i;
-            if (index == 0) {
-                gift.draw(
-                    canvas,
-                    (float) (acx + ar * Math.cos(-65 / 180.0f * Math.PI)),
-                    (float) (acy + ar * Math.sin(-65 / 180.0f * Math.PI)),
-                    scale, -65 + 90,
-                    alpha * (1.0f - expandProgress), lerp(0.9f, 0.25f, actionBarProgress)
-                );
-            } else if (index == 1) {
-                gift.draw(
-                    canvas,
-                    lerp(cacx + Math.min(getWidth() * .27f, dp(62)), cx, 0.5f * actionBarProgress), acy - dp(52),
-                    scale, -4.0f,
-                    alpha * alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 2) {
-                gift.draw(
-                    canvas,
-                    lerp(cacx + Math.min(getWidth() * .46f, dp(105)), cx, 0.5f * actionBarProgress), acy - dp(72),
-                    scale, 8.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 3) {
-                gift.draw(
-                    canvas,
-                    lerp(cacx + Math.min(getWidth() * .60f, dp(136)), cx, 0.5f * actionBarProgress), acy - dp(46),
-                    scale, 3.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 4) {
-                gift.draw(
-                    canvas,
-                    lerp(cacx + Math.min(getWidth() * .08f, dp(21.6f)), cx, 0.5f * actionBarProgress), acy - dp(82f),
-                    scale, -3.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 5) {
-                gift.draw(
-                    canvas,
-                    lerp(cacx + Math.min(getWidth() * .745f, dp(186)), cx, 0.5f * actionBarProgress), acy - dp(39),
-                    scale, 2.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 6) {
-                gift.draw(
-                    canvas,
-                    cacx + Math.min(getWidth() * .38f, dp(102)), expandY - dp(12),
-                    scale, 0,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 7) {
-                gift.draw(
-                    canvas,
-                    cacx + Math.min(getWidth() * .135f, dp(36)), expandY - dp(17.6f),
-                    scale, -5.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
-            } else if (index == 8) {
-                gift.draw(
-                    canvas,
-                    cacx + Math.min(getWidth() * .76f, dp(178)), expandY - dp(21.66f),
-                    scale, 5.0f,
-                    alpha * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha),
-                    1.0f
-                );
+            
+            // Вычисляем угол для равномерного распределения
+            // Правая четверть: от -45° до 45° (в радианах: -π/4 до π/4)
+            // Левая четверть: от 135° до 225° (в радианах: 3π/4 до 5π/4)
+            final float angleRange = (float) (Math.PI / 2); // 90° диапазон для каждой стороны
+            final float angleStep = angleRange / Math.max(1, (gifts.size() + 1) / 2); // равномерное распределение
+            
+            final float angle;
+            final boolean isRight = i % 2 == 0; // четные справа, нечетные слева
+            final int sideIndex = i / 2; // индекс в пределах стороны
+            
+            if (isRight) {
+                // Правая сторона: от -45° до 45° (избегаем верх и низ)
+                angle = (float) (-Math.PI / 4 + angleStep * sideIndex);
+            } else {
+                // Левая сторона: от 135° до 225° (избегаем верх и низ)
+                angle = (float) (3 * Math.PI / 4 + angleStep * sideIndex);
             }
+            
+            // Варьируем расстояние: ближе к краям (верх/низ) = ближе к аватару
+            // Используем синус угла для определения близости к горизонтальной линии
+            final float absAngleSin = Math.abs((float) Math.sin(angle));
+            final float minRadius = ar; // минимальное расстояние (у краев)
+            final float maxRadius = ar + dp(40); // максимальное расстояние (в центре)
+            final float radius = lerp(minRadius, maxRadius, 1.0f - absAngleSin);
+            
+            final float gx = (float) (acx + radius * Math.cos(angle));
+            final float gy = (float) (acy + radius * Math.sin(angle));
+            final float rotation = (float) (angle * 180.0f / Math.PI);
+            
+            gift.draw(
+                canvas,
+                lerp(gx, cx, i == 0 ? 0.5f * actionBarProgress : 0.5f * actionBarProgress),
+                gy,
+                scale, rotation,
+                alpha * (1.0f - expandProgress) * (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : (1.0f - actionBarProgress) * (closedAlpha)),
+                i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : 1.0f
+            );
         }
 
         canvas.restore();

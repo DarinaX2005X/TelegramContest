@@ -209,4 +209,59 @@ public class StarGiftPatterns {
         }
     }
 
+    // Новая функция для рисования эффектов вокруг центрированного аватара
+    public static void drawProfilePatternAroundAvatar(Canvas canvas, Drawable pattern, float avatarCenterX, float avatarCenterY, float avatarRadius, float alpha, float full) {
+        if (alpha <= 0.0f) return;
+
+        // Объединяем все эффекты в один массив и распределяем равномерно вокруг аватара
+        float[][] allPatterns = new float[profileRight.length / 4 + profileLeft.length / 4][4];
+        int idx = 0;
+        
+        // Копируем правые эффекты
+        for (int i = 0; i < profileRight.length; i += 4) {
+            allPatterns[idx][0] = profileRight[i];
+            allPatterns[idx][1] = profileRight[i + 1];
+            allPatterns[idx][2] = profileRight[i + 2];
+            allPatterns[idx][3] = profileRight[i + 3];
+            idx++;
+        }
+        
+        // Копируем левые эффекты (только если full > 0)
+        if (full > 0) {
+            for (int i = 0; i < profileLeft.length; i += 4) {
+                allPatterns[idx][0] = profileLeft[i];
+                allPatterns[idx][1] = profileLeft[i + 1];
+                allPatterns[idx][2] = profileLeft[i + 2];
+                allPatterns[idx][3] = profileLeft[i + 3];
+                idx++;
+            }
+        }
+
+        final int totalCount = full > 0 ? allPatterns.length : profileRight.length / 4;
+        final float angleStep = (float) (2 * Math.PI / totalCount);
+        final float baseRadius = avatarRadius + dpf2(45); // базовое расстояние от аватара (увеличено с 20 до 45)
+        final float radiusVariation = dpf2(80); // максимальное дополнительное расстояние (увеличено с 60 до 80)
+
+        for (int i = 0; i < totalCount; ++i) {
+            final float angle = angleStep * i;
+            final float size = allPatterns[i][2];
+            final float thisAlpha = allPatterns[i][3];
+            
+            // Варьируем расстояние: случайное от baseRadius до baseRadius + radiusVariation
+            final float radius = baseRadius + radiusVariation * (float) Math.sin(angle * 3.7 + i * 1.3); // псевдослучайное расстояние
+            
+            final float x = avatarCenterX + radius * (float) Math.cos(angle);
+            final float y = avatarCenterY + radius * (float) Math.sin(angle);
+
+            pattern.setBounds(
+                (int) (x - dpf2(size) / 2.0f),
+                (int) (y - dpf2(size) / 2.0f),
+                (int) (x + dpf2(size) / 2.0f),
+                (int) (y + dpf2(size) / 2.0f)
+            );
+            pattern.setAlpha((int) (0xFF * alpha * thisAlpha * (full > 0 ? full : 1.0f)));
+            pattern.draw(canvas);
+        }
+    }
+
 }
