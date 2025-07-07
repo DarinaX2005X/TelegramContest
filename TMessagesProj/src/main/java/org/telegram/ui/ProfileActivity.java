@@ -5914,36 +5914,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         updateEmojiStatusDrawableColor(value);
 
-        // Стабильное позиционирование текста - имя и статус сразу встают правильно
-        if (value >= 0.3f) {
-            // Развёрнутое состояние - имя и статус сдвигаются к левому краю над кнопками
-            final float leftMargin = AndroidUtilities.dp(16f); // Используем dp вместо dpf2
-            final float expandedNameY = extraHeight + newTop - AndroidUtilities.dp(100f);
-            final float expandedOnlineY = extraHeight + newTop - AndroidUtilities.dp(75f);
-            
-            // Принудительно устанавливаем позиции относительно левого края
-            nameTextView[1].setTranslationX(leftMargin);
-            nameTextView[1].setTranslationY(expandedNameY);
-            onlineTextView[1].setTranslationX(leftMargin + customPhotoOffset);
-            onlineTextView[1].setTranslationY(expandedOnlineY);
-            mediaCounterTextView.setTranslationX(leftMargin);
-            mediaCounterTextView.setTranslationY(expandedOnlineY);
-            
-            if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Expanded text positions - nameX=" + leftMargin + ", nameY=" + expandedNameY + ", onlineX=" + (leftMargin + customPhotoOffset) + ", onlineY=" + expandedOnlineY);
-            }
-        } else {
-            // Стандартное состояние
-            nameTextView[1].setTranslationX(nameX);
-            nameTextView[1].setTranslationY(nameY);
-            onlineTextView[1].setTranslationX(onlineX + customPhotoOffset);
-            onlineTextView[1].setTranslationY(onlineY);
-            mediaCounterTextView.setTranslationX(onlineX);
-            mediaCounterTextView.setTranslationY(onlineY);
-            
-            if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Standard text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + (onlineX + customPhotoOffset) + ", onlineY=" + onlineY);
-            }
+        // Плавные переходы текста как в оригинальном Telegram
+        // Рассчитываем целевые позиции для развёрнутого состояния
+        final float expandedLeftMargin = AndroidUtilities.dp(16f);
+        final float expandedNameY = extraHeight + newTop - AndroidUtilities.dp(100f);
+        final float expandedOnlineY = extraHeight + newTop - AndroidUtilities.dp(75f);
+        
+        // Плавная интерполяция между стандартными и развёрнутыми позициями
+        float currentNameX = AndroidUtilities.lerp(nameX, expandedLeftMargin, value);
+        float currentNameY = AndroidUtilities.lerp(nameY, expandedNameY, value);
+        float currentOnlineX = AndroidUtilities.lerp(onlineX, expandedLeftMargin, value);
+        float currentOnlineY = AndroidUtilities.lerp(onlineY, expandedOnlineY, value);
+        
+        // Применяем плавные позиции
+        nameTextView[1].setTranslationX(currentNameX);
+        nameTextView[1].setTranslationY(currentNameY);
+        onlineTextView[1].setTranslationX(currentOnlineX + customPhotoOffset);
+        onlineTextView[1].setTranslationY(currentOnlineY);
+        mediaCounterTextView.setTranslationX(currentOnlineX);
+        mediaCounterTextView.setTranslationY(currentOnlineY);
+        
+        if (BuildVars.LOGS_ENABLED) {
+            FileLog.d("ProfileActivity: Smooth text positions - value=" + value + ", nameX=" + currentNameX + ", nameY=" + currentNameY + ", onlineX=" + currentOnlineX + ", onlineY=" + currentOnlineY);
         }
         final Object onlineTextViewTag = onlineTextView[1].getTag();
         int statusColor;
@@ -5972,33 +5964,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         avatarImage.setForegroundAlpha(value);
         
-        // Глассморфный блок под текстом и кнопками
+        // Глассморфный блок с плавной анимацией
         if (expandedTextBackgroundView != null) {
-            if (isPulledDown) {
-                // В развёрнутом состоянии показываем блок с анимацией
-                expandedTextBackgroundView.setAlpha(Math.min(1f, value * 1.2f)); // Плавное появление
-                expandedTextBackgroundView.setVisibility(View.VISIBLE);
-                
-                // Позиционирование блока в САМОМ НИЗУ верхнего блока (под кнопками)
+            // Плавное появление/исчезновение блока в зависимости от value
+            float blockAlpha = Math.max(0f, Math.min(1f, (value - 0.2f) * 2f)); // Начинает появляться с value=0.2
+            expandedTextBackgroundView.setAlpha(blockAlpha);
+            expandedTextBackgroundView.setVisibility(blockAlpha > 0 ? View.VISIBLE : View.GONE);
+            
+            if (blockAlpha > 0) {
+                // Позиционирование блока с плавным изменением размера
                 FrameLayout.LayoutParams backgroundParams = (FrameLayout.LayoutParams) expandedTextBackgroundView.getLayoutParams();
-                int blockHeight = AndroidUtilities.dp(120); // Увеличиваем размер блока
+                int blockHeight = (int) AndroidUtilities.lerp(AndroidUtilities.dp(100f), AndroidUtilities.dp(240f), value);
                 
-                // Блок с небольшим отступом от низа (учитывая отступ кнопок)
-                backgroundParams.topMargin = (int) (extraHeight + newTop - blockHeight + AndroidUtilities.dp(20f)); // Чуть выше низа
+                // Блок плавно растет до низа верхнего блока
+                backgroundParams.topMargin = (int) (extraHeight + newTop - blockHeight);
                 backgroundParams.height = blockHeight;
                 backgroundParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
                 backgroundParams.leftMargin = 0;
                 backgroundParams.rightMargin = 0;
                 
                 expandedTextBackgroundView.requestLayout();
-                
-                // Блок настроен и позиционирован
-            } else {
-                // В стандартном состоянии скрываем блок
-                expandedTextBackgroundView.setAlpha(0f);
-                expandedTextBackgroundView.setVisibility(View.GONE);
-                
-                // Блок скрыт в стандартном режиме
             }
         }
 
@@ -6008,24 +5993,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         params.leftMargin = (int) AndroidUtilities.lerp(0f, 0f, value); // Всегда центрированная аватарка
         avatarContainer.requestLayout();
         
-        // Кнопки всегда привязаны к низу развёрнутого блока
+        // Плавная анимация кнопок
         if (actionsContainer != null) {
             FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
             
-            if (isPulledDown) {
-                // В развёрнутом состоянии кнопки фиксированы в нижней части ПОД текстом
-                int expandedTopMargin = (int) (extraHeight + newTop - AndroidUtilities.dp(60f)); // Кнопки в самом низу
-                actionParams.topMargin = expandedTopMargin;
-                
-                if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("ProfileActivity: Expanded buttons position - topMargin=" + expandedTopMargin);
-                }
-            } else {
-                // Стандартное состояние
-                actionParams.topMargin = AndroidUtilities.dp(225);
-            }
+            // Позиции кнопок: стандартная vs развёрнутая
+            int standardButtonsY = AndroidUtilities.dp(225);
+            int expandedButtonsY = (int) (extraHeight + newTop - AndroidUtilities.dp(60f));
+            
+            // Плавная интерполяция позиций кнопок
+            int currentButtonsY = (int) AndroidUtilities.lerp(standardButtonsY, expandedButtonsY, value);
+            actionParams.topMargin = currentButtonsY;
+            
+            // Плавная анимация прозрачности кнопок
+            float buttonsAlpha = AndroidUtilities.lerp(0.8f, 1f, value); // Слегка выделяем в развёрнутом состоянии
+            actionsContainer.setAlpha(buttonsAlpha);
             
             actionsContainer.requestLayout();
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Smooth buttons animation - value=" + value + ", topMargin=" + currentButtonsY + ", alpha=" + buttonsAlpha);
+            }
         }
 
         updateCollectibleHint();
@@ -7691,8 +7679,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (openAnimationInProgress && playProfileAnimation == 2) {
                             additionalTranslationY = -(1.0f - avatarAnimationProgress) * AndroidUtilities.dp(50);
                         }
-                        // Пересчитываем координаты для развёрнутого состояния
-                        refreshNameAndOnlineXY();
+                        // В развернутом состоянии используем специфические вычисления позиций
                         onlineX = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
                         // Позиционируем имя и статус над кнопками с отступом
                         float buttonContainerHeight = AndroidUtilities.dpf2(56f); // Высота контейнера кнопок
@@ -7835,29 +7822,196 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                 updateCollectibleHint();
             } else if (extraHeight <= AndroidUtilities.dp(330f)) {
+                // Рассчитываем прогресс скролла вверх для свёрнутого состояния
+                // Scroll-up анимация начинается только при экстра малых значениях extraHeight (реальный скролл вверх)
+                // Пороговое значение 150dp - ниже этого начинается scroll-up анимация для UI элементов
+                float scrollUpThreshold = AndroidUtilities.dp(150f);
+                float scrollUpProgress = 0f;
+                if (extraHeight < scrollUpThreshold) {
+                    scrollUpProgress = Math.max(0f, Math.min(1f, (scrollUpThreshold - extraHeight) / scrollUpThreshold));
+                }
+                
+                // Для подарков используем отдельный прогресс - начинаем втягивание намного раньше
+                // Подарки начинают втягиваться когда extraHeight < 280dp (почти сразу после начала скролла)
+                float giftsScrollThreshold = AndroidUtilities.dp(280f);
+                float giftsScrollProgress = 0f;
+                if (extraHeight < giftsScrollThreshold) {
+                    giftsScrollProgress = Math.max(0f, Math.min(1f, (giftsScrollThreshold - extraHeight) / giftsScrollThreshold));
+                }
+                
                 avatarScale = (80 + 18 * diff) / 80.0f;
                 if (storyView != null) {
                     storyView.invalidate();
                 }
                 if (giftsView != null) {
+                    // Передаём ранний прогресс скролла в подарки для заметного втягивания
+                    giftsView.setScrollUpProgress(giftsScrollProgress);
                     giftsView.invalidate();
                 }
                 float nameScale = 1.0f + 0.12f * diff;
+                
                 if (expandAnimator == null || !expandAnimator.isRunning()) {
-                    avatarContainer.setScaleX(avatarScale);
-                    avatarContainer.setScaleY(avatarScale);
-                    // Для центрированного профиля не применяем translation - аватарка остается в исходной позиции
-                    avatarContainer.setTranslationX(0);
-                    avatarContainer.setTranslationY(0);
-                    
-                    // Восстанавливаем стандартные LayoutParams для аватарки
-                    FrameLayout.LayoutParams avatarParams = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
-                    avatarParams.width = AndroidUtilities.dp(80);
-                    avatarParams.height = AndroidUtilities.dp(80);
-                    avatarParams.topMargin = AndroidUtilities.dp(45);
-                    avatarParams.leftMargin = 0; // Центрирована по горизонтали
-                    avatarParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-                    avatarContainer.requestLayout();
+                    if (scrollUpProgress > 0f) {
+                        // SCROLL-UP СОСТОЯНИЕ: применяем анимацию сворачивания
+                        
+                        // АВАТАРКА: плавное движение вверх и уменьшение при скролле
+                        float avatarTranslationY = -scrollUpProgress * AndroidUtilities.dp(150f); // Поднимается на 150dp вверх
+                        float avatarFinalScale = avatarScale * (1f - scrollUpProgress * 0.6f); // Уменьшается на 60%
+                        
+                        avatarContainer.setScaleX(avatarFinalScale);
+                        avatarContainer.setScaleY(avatarFinalScale);
+                        avatarContainer.setTranslationX(0); // Остаётся по центру горизонтально
+                        avatarContainer.setTranslationY(avatarTranslationY);
+                        
+                        // КНОПКИ: правильная анимация с привязкой к нижней границе блока
+                        if (actionsContainer != null) {
+                            FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
+                            
+                            // Константы
+                            final int BUTTON_HEIGHT = AndroidUtilities.dp(56);
+                            final int STANDARD_BUTTONS_Y = AndroidUtilities.dp(225); // Стандартная позиция кнопок
+                            final int STANDARD_EXTRA_HEIGHT = AndroidUtilities.dp(330); // Стандартная высота блока
+                            final int COMPRESSION_START_Y = AndroidUtilities.dp(100); // Где начинается сжатие
+                            
+                            // Простая логика: кнопки двигаются пропорционально изменению extraHeight
+                            // Стандартное соотношение: при extraHeight=330dp кнопки на 225dp
+                            // Расчет: кнопки должны быть на (225 * extraHeight / 330)
+                            int targetButtonsY = (int) (STANDARD_BUTTONS_Y * extraHeight / STANDARD_EXTRA_HEIGHT);
+                            
+                            // Ограничиваем чтобы кнопки не поднимались выше точки сжатия
+                            if (targetButtonsY > COMPRESSION_START_Y) {
+                                // ФАЗА 1: Обычное движение - кнопки поднимаются пропорционально
+                                actionParams.topMargin = targetButtonsY;
+                                actionsContainer.requestLayout();
+                                
+                                // Кнопки остаются в полном размере
+                                actionsContainer.setScaleX(1f);
+                                actionsContainer.setScaleY(1f);
+                                actionsContainer.setPivotY(0);
+                                actionsContainer.setAlpha(1f);
+                                
+                                if (BuildVars.LOGS_ENABLED) {
+                                    FileLog.d("ProfileActivity: Button movement - targetY=" + targetButtonsY + 
+                                            ", extraHeight=" + extraHeight + ", ratio=" + (extraHeight / STANDARD_EXTRA_HEIGHT));
+                                }
+                            } else {
+                                // ФАЗА 2: Сжатие - кнопки достигли критической точки
+                                actionParams.topMargin = COMPRESSION_START_Y;
+                                actionsContainer.requestLayout();
+                                
+                                // Расчет прогресса сжатия: сколько extraHeight меньше чем нужно для COMPRESSION_START_Y
+                                float compressionThreshold = COMPRESSION_START_Y * STANDARD_EXTRA_HEIGHT / STANDARD_BUTTONS_Y;
+                                float compressionRange = compressionThreshold; // От compressionThreshold до 0
+                                float compressionProgress = Math.max(0f, Math.min(1f, 
+                                    (compressionThreshold - extraHeight) / compressionRange));
+                                
+                                // Вертикальное сжатие
+                                float verticalScale = 1f - compressionProgress * 0.95f; // Сжимаем до 5%
+                                actionsContainer.setScaleY(verticalScale);
+                                actionsContainer.setPivotY(0); // Сжатие сверху
+                                actionsContainer.setScaleX(1f); // Горизонтально не меняем
+                                
+                                // Альфа уменьшается в последние 60% сжатия
+                                float alphaStart = 0.4f;
+                                float buttonAlpha = compressionProgress < alphaStart ? 1f : 
+                                    1f - (compressionProgress - alphaStart) / (1f - alphaStart);
+                                actionsContainer.setAlpha(buttonAlpha);
+                                
+                                if (BuildVars.LOGS_ENABLED) {
+                                    FileLog.d("ProfileActivity: Button compression - progress=" + compressionProgress + 
+                                            ", scaleY=" + verticalScale + ", alpha=" + buttonAlpha + 
+                                            ", threshold=" + compressionThreshold);
+                                }
+                            }
+                        }
+                        
+                        // ИМЯ И СТАТУС: плавное перемещение в левый верхний угол при скролле
+                        // Вычисляем translation относительно базовых позиций (nameTextView=160dp, onlineTextView=195dp)
+                        float targetNameX = AndroidUtilities.dp(56f) - (nameTextView[1] != null ? nameTextView[1].getLeft() : 0); // Отступ от стрелки "назад"
+                        float targetNameY = AndroidUtilities.dp(35f) - AndroidUtilities.dp(160f); // 65dp от верха экрана - 160dp базовая позиция = -95dp
+                        float targetOnlineX = AndroidUtilities.dp(56f) - (onlineTextView[1] != null ? onlineTextView[1].getLeft() : 0);
+                        float targetOnlineY = AndroidUtilities.dp(55f) - AndroidUtilities.dp(195f); // 85dp от верха экрана - 195dp базовая позиция = -110dp
+                            
+                        // Плавная интерполяция позиций
+                        float currentNameX = AndroidUtilities.lerp(0f, targetNameX, scrollUpProgress);
+                        float currentNameY = AndroidUtilities.lerp(0f, targetNameY, scrollUpProgress);
+                        float currentOnlineX = AndroidUtilities.lerp(0f, targetOnlineX, scrollUpProgress);
+                        float currentOnlineY = AndroidUtilities.lerp(0f, targetOnlineY, scrollUpProgress);
+                        
+                        // Применяем плавные позиции напрямую
+                        for (int a = 0; a < nameTextView.length; a++) {
+                            if (nameTextView[a] != null) {
+                                nameTextView[a].setTranslationX(currentNameX);
+                                nameTextView[a].setTranslationY(currentNameY);
+                                nameTextView[a].setScaleX(nameScale * (1f - scrollUpProgress * 0.2f)); // Немного уменьшаем при скролле
+                                nameTextView[a].setScaleY(nameScale * (1f - scrollUpProgress * 0.2f));
+                            }
+                            
+                            if (a < onlineTextView.length && onlineTextView[a] != null) {
+                                onlineTextView[a].setTranslationX(currentOnlineX);
+                                onlineTextView[a].setTranslationY(currentOnlineY);
+                            }
+                            
+                            if (a == 1 && mediaCounterTextView != null) {
+                                mediaCounterTextView.setTranslationX(currentOnlineX);
+                                mediaCounterTextView.setTranslationY(currentOnlineY);
+                            }
+                        }
+                        
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("ProfileActivity: Scroll-up text animation - scrollUpProgress=" + scrollUpProgress + 
+                                    ", nameX=" + currentNameX + ", nameY=" + currentNameY + ", onlineX=" + currentOnlineX + ", onlineY=" + currentOnlineY);
+                        }
+                        
+                    } else {
+                        // СТАНДАРТНОЕ СОСТОЯНИЕ: используем исходную логику без изменений
+                        
+                        avatarContainer.setScaleX(avatarScale);
+                        avatarContainer.setScaleY(avatarScale);
+                        avatarContainer.setTranslationX(0);
+                        avatarContainer.setTranslationY(0);
+                        
+                        // Стандартные LayoutParams для аватарки
+                        FrameLayout.LayoutParams avatarParams = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
+                        avatarParams.width = AndroidUtilities.dp(80);
+                        avatarParams.height = AndroidUtilities.dp(80);
+                        avatarParams.topMargin = AndroidUtilities.dp(45);
+                        avatarParams.leftMargin = 0; // Центрирована по горизонтали
+                        avatarParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                        avatarContainer.requestLayout();
+                        
+                        // Стандартное позиционирование кнопок
+                        if (actionsContainer != null) {
+                            FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
+                            actionParams.topMargin = AndroidUtilities.dp(225);
+                            actionsContainer.requestLayout();
+                            
+                            actionsContainer.setScaleX(1f);
+                            actionsContainer.setScaleY(1f);
+                            actionsContainer.setAlpha(1f);
+                        }
+                        
+                        // Стандартное позиционирование имени и статуса
+                        refreshNameAndOnlineXY();
+                        for (int a = 0; a < nameTextView.length; a++) {
+                            if (nameTextView[a] == null) {
+                                continue;
+                            }
+                            nameTextView[a].setTranslationX(nameX);
+                            nameTextView[a].setTranslationY(nameY);
+                            nameTextView[a].setScaleX(nameScale);
+                            nameTextView[a].setScaleY(nameScale);
+
+                            if (a < onlineTextView.length && onlineTextView[a] != null) {
+                                onlineTextView[a].setTranslationX(onlineX);
+                                onlineTextView[a].setTranslationY(onlineY);
+                            }
+                            if (a == 1 && mediaCounterTextView != null) {
+                                mediaCounterTextView.setTranslationX(onlineX);
+                                mediaCounterTextView.setTranslationY(onlineY);
+                            }
+                        }
+                    }
                     
                     float extra = AndroidUtilities.dp(80) * avatarScale - AndroidUtilities.dp(80);
                     timeItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(16) + extra);
@@ -7866,18 +8020,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     starBgItem.setTranslationY(avatarContainer.getY() + AndroidUtilities.dp(24) + extra);
                     starFgItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(28) + extra);
                     starFgItem.setTranslationY(avatarContainer.getY() + AndroidUtilities.dp(24) + extra);
-                }
-                // Вычисляем правильные координаты для стандартного состояния
-                refreshNameAndOnlineXY();
-                if (showStatusButton != null) {
-                    showStatusButton.setAlpha((int) (0xFF * diff));
-                }
-                for (int a = 0; a < nameTextView.length; a++) {
-                    if (nameTextView[a] == null) {
-                        continue;
-                    }
-                    if (expandAnimator == null || !expandAnimator.isRunning()) {
-                        // Применяем правильное позиционирование для стандартного состояния
+                    
+                } else {
+                    // Если анимация развёртывания запущена, используем стандартную логику
+                    refreshNameAndOnlineXY();
+                    for (int a = 0; a < nameTextView.length; a++) {
+                        if (nameTextView[a] == null) {
+                            continue;
+                        }
                         nameTextView[a].setTranslationX(nameX);
                         nameTextView[a].setTranslationY(nameY);
 
@@ -7887,9 +8037,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             mediaCounterTextView.setTranslationX(onlineX);
                             mediaCounterTextView.setTranslationY(onlineY);
                         }
+                        nameTextView[a].setScaleX(nameScale);
+                        nameTextView[a].setScaleY(nameScale);
                     }
-                    nameTextView[a].setScaleX(nameScale);
-                    nameTextView[a].setScaleY(nameScale);
+                }
+                
+                if (showStatusButton != null) {
+                    showStatusButton.setAlpha((int) (0xFF * diff));
                 }
                 updateCollectibleHint();
             }
@@ -8003,18 +8157,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void refreshNameAndOnlineXY() {
-        // В стандартном состоянии (центрированный профиль) элементы должны быть в центре
+        // В стандартном состоянии элементы остаются в базовых позициях (nameTextView=160dp, onlineTextView=195dp)
         if (!isPulledDown) {
-            nameX = 0;
-            nameY = 0;
-            onlineX = 0; 
-            onlineY = 0;
+            // Стандартные translation-значения для центрированного профиля
+            // Translation = 0 означает остаться в базовой позиции (160dp для имени, 195dp для статуса)
+            nameX = 0; // По центру горизонтально
+            nameY = 0; // Остается на базовой позиции 160dp
+            onlineX = 0; // По центру горизонтально
+            onlineY = 0; // Остается на базовой позиции 195dp
             
             if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Standard text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+                FileLog.d("ProfileActivity: Standard text translations - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
             }
         } else {
-            // В развёрнутом состоянии (isPulledDown=true) сразу позиционируем текст слева и ОЧЕНЬ высоко
+            // В развёрнутом состоянии (isPulledDown=true) сдвигаем текст слева и высоко
             nameX = AndroidUtilities.dp(16f); // Фиксированный отступ от левого края
             nameY = extraHeight + avatarY - AndroidUtilities.dp(300f); // Позиция имени ОЧЕНЬ высоко в развернутом блоке
             onlineX = AndroidUtilities.dp(16f); // Тот же отступ для статуса
@@ -8022,19 +8178,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("ProfileActivity: Expanded text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
-            }
-        }
-        
-        // ПРИНУДИТЕЛЬНО применяем позиции сразу после вычисления
-        for (int a = 0; a < nameTextView.length; a++) {
-            if (nameTextView[a] != null) {
-                nameTextView[a].setTranslationX(nameX);
-                nameTextView[a].setTranslationY(nameY);
-                
-                if (a < onlineTextView.length && onlineTextView[a] != null) {
-                    onlineTextView[a].setTranslationX(onlineX);
-                    onlineTextView[a].setTranslationY(onlineY);
-                }
             }
         }
     }

@@ -63,6 +63,14 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             invalidate();
         }
     }
+    
+    private float scrollUpProgress = 0.0f;
+    public void setScrollUpProgress(float progress) {
+        if (this.scrollUpProgress != progress) {
+            this.scrollUpProgress = progress;
+            invalidate();
+        }
+    }
 
     private float actionBarProgress;
     public void setActionBarActionMode(float progress) {
@@ -322,7 +330,8 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
-        if (gifts.isEmpty() || expandProgress >= 1.0f) return;
+        // Теперь подарки показываются и в развёрнутом состоянии, но скрываются при скролле вверх
+        if (gifts.isEmpty() || (expandProgress >= 1.0f && scrollUpProgress == 0.0f)) return;
 
         final float ax = avatarContainer.getX();
         final float ay = avatarContainer.getY();
@@ -342,44 +351,61 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
         for (int i = 0; i < gifts.size(); ++i) {
             final Gift gift = gifts.get(i);
             final float alpha = gift.animatedFloat.set(1.0f);
-            final float scale = lerp(0.5f, 1.0f, alpha);
+            
+            // СИНХРОНИЗАЦИЯ С АВАТАРКОЙ: подарки уменьшаются и "втягиваются" при скролле вверх
+            // scrollUpProgress = 0 -> стандартное поведение
+            // scrollUpProgress = 1 -> подарки полностью "втянуты" в аватарку и исчезли
+            final float baseScale = lerp(0.5f, 1.0f, alpha);
+            final float scrollScale = 1.0f - scrollUpProgress * 0.9f; // Уменьшаются на 90% при скролле
+            final float finalScale = baseScale * scrollScale;
             
             // Вычисляем угол для равномерного распределения
-            // Правая четверть: от -45° до 45° (в радианах: -π/4 до π/4)
-            // Левая четверть: от 135° до 225° (в радианах: 3π/4 до 5π/4)
             final float angleRange = (float) (Math.PI / 2); // 90° диапазон для каждой стороны
-            final float angleStep = angleRange / Math.max(1, (gifts.size() + 1) / 2); // равномерное распределение
+            final float angleStep = angleRange / Math.max(1, (gifts.size() + 1) / 2);
             
             final float angle;
             final boolean isRight = i % 2 == 0; // четные справа, нечетные слева
             final int sideIndex = i / 2; // индекс в пределах стороны
             
             if (isRight) {
-                // Правая сторона: от -45° до 45° (избегаем верх и низ)
+                // Правая сторона: от -45° до 45°
                 angle = (float) (-Math.PI / 4 + angleStep * sideIndex);
             } else {
-                // Левая сторона: от 135° до 225° (избегаем верх и низ)
+                // Левая сторона: от 135° до 225°
                 angle = (float) (3 * Math.PI / 4 + angleStep * sideIndex);
             }
             
-            // Варьируем расстояние: ближе к краям (верх/низ) = ближе к аватару
-            // Используем синус угла для определения близости к горизонтальной линии
+            // Расстояние от аватарки: при скролле подарки "втягиваются" к центру
             final float absAngleSin = Math.abs((float) Math.sin(angle));
-            final float minRadius = ar; // минимальное расстояние (у краев)
-            final float maxRadius = ar + dp(40); // максимальное расстояние (в центре)
-            final float radius = lerp(minRadius, maxRadius, 1.0f - absAngleSin);
+            final float minRadius = ar;
+            final float maxRadius = ar + dp(40);
+            final float baseRadius = lerp(minRadius, maxRadius, 1.0f - absAngleSin);
             
-            final float gx = (float) (acx + radius * Math.cos(angle));
-            final float gy = (float) (acy + radius * Math.sin(angle));
+            // При скролле вверх радиус сильно уменьшается, подарки интенсивно "втягиваются" в аватарку
+            // Используем квадратичную функцию для более драматичного эффекта
+            final float intensiveScroll = scrollUpProgress * scrollUpProgress; // Квадратичное ускорение
+            final float scrollRadius = baseRadius * (1.0f - intensiveScroll * 0.95f); // Приближаются на 95% с ускорением
+            
+            final float gx = (float) (acx + scrollRadius * Math.cos(angle));
+            final float gy = (float) (acy + scrollRadius * Math.sin(angle));
             final float rotation = (float) (angle * 180.0f / Math.PI);
+            
+            // Альфа-канал: учитываем скролл вверх для плавного исчезновения
+            float baseAlpha = alpha * (1.0f - expandProgress) * (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : (1.0f - actionBarProgress) * (closedAlpha));
+            // Подарки исчезают более плавно - только когда scrollUpProgress > 0.6 (в последние 40% анимации)
+            float scrollAlpha = scrollUpProgress < 0.6f ? 1.0f : 1.0f - (scrollUpProgress - 0.6f) / 0.4f;
+            float finalAlpha = baseAlpha * scrollAlpha;
+            
+            // Градиент также исчезает синхронно с подарками
+            float gradientAlpha = (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : 1.0f) * scrollAlpha;
             
             gift.draw(
                 canvas,
                 lerp(gx, cx, i == 0 ? 0.5f * actionBarProgress : 0.5f * actionBarProgress),
                 gy,
-                scale, rotation,
-                alpha * (1.0f - expandProgress) * (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : (1.0f - actionBarProgress) * (closedAlpha)),
-                i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : 1.0f
+                finalScale, rotation,
+                finalAlpha,
+                gradientAlpha
             );
         }
 
