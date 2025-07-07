@@ -481,7 +481,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float onlineX;
     private float onlineY;
     private LinearLayout actionsContainer;
-    private View expandedOverlayView;
+    private View expandedTextBackgroundView;
     private float expandProgress;
     private float listViewVelocityY;
     private ValueAnimator expandAnimator;
@@ -4936,6 +4936,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     animatedEmojiDrawable.getImageReceiver().startAnimation();
                 }
             }
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                
+                // Применяем легкое затемнение в развёрнутом состоянии для глассморфного эффекта
+                if (currentExpandAnimatorValue > 0.1f) {
+                    Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                    dimPaint.setColor(Color.BLACK);
+                    dimPaint.setAlpha((int) (30 * currentExpandAnimatorValue)); // Легкое затемнение 
+                    canvas.drawRect(0, 0, getWidth(), getHeight(), dimPaint);
+                }
+            }
+
+
         };
         avatarImage.getImageReceiver().setAllowDecodeSingleFrame(true);
         avatarImage.setRoundRadius(getSmallAvatarRoundRadius());
@@ -5128,6 +5143,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             nameTextView[a].setEllipsizeByGradient(true);
             nameTextView[a].setRightDrawableOutside(a == 0);
             nameTextView[a].setGravity(Gravity.CENTER);
+            // Добавляем elevation чтобы текст был поверх блока
+            if (Build.VERSION.SDK_INT >= 21) {
+                nameTextView[a].setElevation(AndroidUtilities.dp(8));
+            }
             avatarContainer2.addView(nameTextView[a], LayoutHelper.createFrame(a == 0 ? initialTitleWidth : LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 160, 0, 0));
         }
         for (int a = 0; a < onlineTextView.length; a++) {
@@ -5182,6 +5201,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 onlineTextView[a].setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             }
             onlineTextView[a].setFocusable(a == 0);
+            // Добавляем elevation чтобы онлайн текст был поверх блока
+            if (Build.VERSION.SDK_INT >= 21) {
+                onlineTextView[a].setElevation(AndroidUtilities.dp(8));
+            }
             avatarContainer2.addView(onlineTextView[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 195, 0, 0));
         }
         checkPhotoDescriptionAlpha();
@@ -5191,6 +5214,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         actionsContainer = new LinearLayout(context);
         actionsContainer.setOrientation(LinearLayout.HORIZONTAL);
         actionsContainer.setGravity(Gravity.CENTER);
+        // Добавляем elevation чтобы кнопки были поверх блока
+        if (Build.VERSION.SDK_INT >= 21) {
+            actionsContainer.setElevation(AndroidUtilities.dp(8));
+        }
         avatarContainer2.addView(actionsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 16, 225, 16, 0));
 
         // Создаем массив данных для кнопок
@@ -5547,42 +5574,55 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             contentView.addView(bottomButtonsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 72 + (1 / AndroidUtilities.density), Gravity.BOTTOM | Gravity.FILL_HORIZONTAL));
         }
 
-        // Создаем размытый оверлей для нижней части в развёрнутом состоянии
-        // Добавляем в самом конце, чтобы он был поверх всех элементов
-        expandedOverlayView = new View(context) {
+        // Создаем глассморфный блок под текстом и кнопками в развёрнутом состоянии
+        expandedTextBackgroundView = new View(context) {
+            private Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            
             @Override
             protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
-                if (getMeasuredHeight() > 0 && getAlpha() > 0) {
-                    // Создаем градиентное затемнение снизу вверх для читаемости белого текста
-                    Paint gradientPaint = new Paint();
-                    
-                    // Начинаем затемнение с нижней части (где текст и кнопки)
-                    float gradientHeight = getMeasuredHeight() * 0.7f; // 70% от высоты для лучшего покрытия
-                    LinearGradient gradient = new LinearGradient(
-                        0, getMeasuredHeight(),
-                        0, getMeasuredHeight() - gradientHeight,
-                        new int[]{
-                            0xA0000000, // 62% черный внизу для отличной читаемости
-                            0x80000000, // 50% черный 
-                            0x60000000, // 37% черный
-                            0x30000000, // 18% черный
-                            0x10000000, // 6% черный
-                            0x00000000  // прозрачный вверху
-                        },
-                        new float[]{0f, 0.2f, 0.4f, 0.6f, 0.8f, 1f},
-                        Shader.TileMode.CLAMP
-                    );
-                    gradientPaint.setShader(gradient);
-                    canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), gradientPaint);
-                }
+                
+                // Создаем эффект размытого/затемненного низа аватара
+                
+                // 1. Вертикальный градиент - имитация размытия нижней части аватара
+                LinearGradient blurGradient = new LinearGradient(
+                    0, 0, 0, getMeasuredHeight(),
+                    new int[]{
+                        0x00000000, // Полностью прозрачный вверху (аватар виден)
+                        0x20000000, // Легкое затемнение в середине
+                        0x60000000  // Сильное затемнение внизу (для читаемости белого текста)
+                    }, 
+                    new float[]{0f, 0.3f, 1f}, // 30% прозрачно, потом плавно затемняется
+                    Shader.TileMode.CLAMP
+                );
+                glassPaint.setShader(blurGradient);
+                glassPaint.setStyle(Paint.Style.FILL);
+                
+                // Рисуем без рамки и закругления - как естественное затемнение аватара
+                canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), glassPaint);
+                
+                // 2. Дополнительный слой для эффекта "стеклянности" (очень тонкий)
+                LinearGradient glassGradient = new LinearGradient(
+                    0, 0, 0, getMeasuredHeight(),
+                    new int[]{
+                        0x10FFFFFF, // Легкий белый блик вверху
+                        0x00000000, // Прозрачно в середине  
+                        0x20000000  // Легкое затемнение внизу
+                    },
+                    new float[]{0f, 0.5f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                glassPaint.setShader(glassGradient);
+                canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), glassPaint);
             }
         };
-        expandedOverlayView.setAlpha(0f);
-        expandedOverlayView.setClickable(false);
-        expandedOverlayView.setFocusable(false);
-        // Добавляем оверлей поверх avatarContainer2
-        avatarContainer2.addView(expandedOverlayView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        expandedTextBackgroundView.setAlpha(0f); // Изначально невидимый
+        expandedTextBackgroundView.setClickable(false);
+        expandedTextBackgroundView.setFocusable(false);
+        expandedTextBackgroundView.setVisibility(View.GONE); // Изначально скрыт
+        // Добавляем блок в самый КОНЕЦ avatarContainer2 (поверх всего)
+        // Размер установится динамически в setAvatarExpandProgress
+        avatarContainer2.addView(expandedTextBackgroundView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         if (openGifts || openCommonChats) {
             AndroidUtilities.runOnUIThread(this::scrollToSharedMedia);
@@ -5816,6 +5856,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void setAvatarExpandProgress(float animatedFracture) {
         final int newTop = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
         final float value = currentExpandAnimatorValue = AndroidUtilities.lerp(expandAnimatorValues, currentExpanAnimatorFracture = animatedFracture);
+        
+        if (BuildVars.LOGS_ENABLED) {
+            FileLog.d("ProfileActivity: setAvatarExpandProgress - value=" + value + ", extraHeight=" + extraHeight + ", isPulledDown=" + isPulledDown);
+        }
         checkPhotoDescriptionAlpha();
         avatarContainer.setScaleX(avatarScale);
         avatarContainer.setScaleY(avatarScale);
@@ -5870,30 +5914,37 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         updateEmojiStatusDrawableColor(value);
 
-        final float k = AndroidUtilities.dpf2(8f);
-
-        final float nameTextViewXEnd = AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft();
-        final float buttonContainerHeight = AndroidUtilities.dpf2(56f);
-        final float textSpacing = AndroidUtilities.dpf2(16f);
-        final float nameTextViewYEnd = newTop + extraHeight - buttonContainerHeight - textSpacing - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom();
-        final float nameTextViewCx = k + nameX + (nameTextViewXEnd - nameX) / 2f;
-        final float nameTextViewCy = k + nameY + (nameTextViewYEnd - nameY) / 2f;
-        final float nameTextViewX = (1 - value) * (1 - value) * nameX + 2 * (1 - value) * value * nameTextViewCx + value * value * nameTextViewXEnd;
-        final float nameTextViewY = (1 - value) * (1 - value) * nameY + 2 * (1 - value) * value * nameTextViewCy + value * value * nameTextViewYEnd;
-
-        final float onlineTextViewXEnd = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
-        final float onlineTextViewYEnd = newTop + extraHeight - buttonContainerHeight - textSpacing - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom();
-        final float onlineTextViewCx = k + onlineX + (onlineTextViewXEnd - onlineX) / 2f;
-        final float onlineTextViewCy = k + onlineY + (onlineTextViewYEnd - onlineY) / 2f;
-        final float onlineTextViewX = (1 - value) * (1 - value) * onlineX + 2 * (1 - value) * value * onlineTextViewCx + value * value * onlineTextViewXEnd;
-        final float onlineTextViewY = (1 - value) * (1 - value) * onlineY + 2 * (1 - value) * value * onlineTextViewCy + value * value * onlineTextViewYEnd;
-
-        nameTextView[1].setTranslationX(nameTextViewX);
-        nameTextView[1].setTranslationY(nameTextViewY);
-        onlineTextView[1].setTranslationX(onlineTextViewX + customPhotoOffset);
-        onlineTextView[1].setTranslationY(onlineTextViewY);
-        mediaCounterTextView.setTranslationX(onlineTextViewX);
-        mediaCounterTextView.setTranslationY(onlineTextViewY);
+        // Стабильное позиционирование текста - имя и статус сразу встают правильно
+        if (value >= 0.3f) {
+            // Развёрнутое состояние - имя и статус сдвигаются к левому краю над кнопками
+            final float leftMargin = AndroidUtilities.dp(16f); // Используем dp вместо dpf2
+            final float expandedNameY = extraHeight + newTop - AndroidUtilities.dp(100f);
+            final float expandedOnlineY = extraHeight + newTop - AndroidUtilities.dp(75f);
+            
+            // Принудительно устанавливаем позиции относительно левого края
+            nameTextView[1].setTranslationX(leftMargin);
+            nameTextView[1].setTranslationY(expandedNameY);
+            onlineTextView[1].setTranslationX(leftMargin + customPhotoOffset);
+            onlineTextView[1].setTranslationY(expandedOnlineY);
+            mediaCounterTextView.setTranslationX(leftMargin);
+            mediaCounterTextView.setTranslationY(expandedOnlineY);
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Expanded text positions - nameX=" + leftMargin + ", nameY=" + expandedNameY + ", onlineX=" + (leftMargin + customPhotoOffset) + ", onlineY=" + expandedOnlineY);
+            }
+        } else {
+            // Стандартное состояние
+            nameTextView[1].setTranslationX(nameX);
+            nameTextView[1].setTranslationY(nameY);
+            onlineTextView[1].setTranslationX(onlineX + customPhotoOffset);
+            onlineTextView[1].setTranslationY(onlineY);
+            mediaCounterTextView.setTranslationX(onlineX);
+            mediaCounterTextView.setTranslationY(onlineY);
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Standard text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + (onlineX + customPhotoOffset) + ", onlineY=" + onlineY);
+            }
+        }
         final Object onlineTextViewTag = onlineTextView[1].getTag();
         int statusColor;
         boolean online = false;
@@ -5921,25 +5972,59 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         avatarImage.setForegroundAlpha(value);
         
-        // Анимируем оверлей в развёрнутом состоянии
-        if (expandedOverlayView != null) {
-            // Оверлей появляется прогрессивно с анимацией
-            expandedOverlayView.setAlpha(value);
-            expandedOverlayView.invalidate();
+        // Глассморфный блок под текстом и кнопками
+        if (expandedTextBackgroundView != null) {
+            if (isPulledDown) {
+                // В развёрнутом состоянии показываем блок с анимацией
+                expandedTextBackgroundView.setAlpha(Math.min(1f, value * 1.2f)); // Плавное появление
+                expandedTextBackgroundView.setVisibility(View.VISIBLE);
+                
+                // Позиционирование блока в САМОМ НИЗУ верхнего блока (под кнопками)
+                FrameLayout.LayoutParams backgroundParams = (FrameLayout.LayoutParams) expandedTextBackgroundView.getLayoutParams();
+                int blockHeight = AndroidUtilities.dp(120); // Увеличиваем размер блока
+                
+                // Блок с небольшим отступом от низа (учитывая отступ кнопок)
+                backgroundParams.topMargin = (int) (extraHeight + newTop - blockHeight + AndroidUtilities.dp(20f)); // Чуть выше низа
+                backgroundParams.height = blockHeight;
+                backgroundParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
+                backgroundParams.leftMargin = 0;
+                backgroundParams.rightMargin = 0;
+                
+                expandedTextBackgroundView.requestLayout();
+                
+                // Блок настроен и позиционирован
+            } else {
+                // В стандартном состоянии скрываем блок
+                expandedTextBackgroundView.setAlpha(0f);
+                expandedTextBackgroundView.setVisibility(View.GONE);
+                
+                // Блок скрыт в стандартном режиме
+            }
         }
 
         final FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
-        params.width = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(42f), listView.getMeasuredWidth() / avatarScale, value);
-        params.height = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(42f), (extraHeight + newTop) / avatarScale, value);
-        params.leftMargin = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(64f), 0f, value);
+        params.width = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(80f), listView.getMeasuredWidth() / avatarScale, value);
+        params.height = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(80f), (extraHeight + newTop) / avatarScale, value);
+        params.leftMargin = (int) AndroidUtilities.lerp(0f, 0f, value); // Всегда центрированная аватарка
         avatarContainer.requestLayout();
         
-        // Анимируем позицию кнопок
+        // Кнопки всегда привязаны к низу развёрнутого блока
         if (actionsContainer != null) {
             FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
-            int standardTopMargin = AndroidUtilities.dp(225);
-            int expandedTopMargin = (int) (extraHeight + newTop - AndroidUtilities.dpf2(72f));
-            actionParams.topMargin = (int) AndroidUtilities.lerp(standardTopMargin, expandedTopMargin, value);
+            
+            if (isPulledDown) {
+                // В развёрнутом состоянии кнопки фиксированы в нижней части ПОД текстом
+                int expandedTopMargin = (int) (extraHeight + newTop - AndroidUtilities.dp(60f)); // Кнопки в самом низу
+                actionParams.topMargin = expandedTopMargin;
+                
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.d("ProfileActivity: Expanded buttons position - topMargin=" + expandedTopMargin);
+                }
+            } else {
+                // Стандартное состояние
+                actionParams.topMargin = AndroidUtilities.dp(225);
+            }
+            
             actionsContainer.requestLayout();
         }
 
@@ -7533,7 +7618,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             float h = openAnimationInProgress ? initialAnimationExtraHeight : extraHeight;
             if (h > AndroidUtilities.dp(230f) || isPulledDown) {
                 expandProgress = Math.max(0f, Math.min(1f, (h - AndroidUtilities.dp(230f)) / (listView.getMeasuredWidth() - newTop - AndroidUtilities.dp(230f))));
-                avatarScale = AndroidUtilities.lerp((42f + 18f) / 42f, (42f + 42f + 18f) / 42f, Math.min(1f, expandProgress * 3f));
+                avatarScale = AndroidUtilities.lerp((80f + 18f) / 80f, (80f + 80f + 18f) / 80f, Math.min(1f, expandProgress * 3f));
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -7606,6 +7691,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (openAnimationInProgress && playProfileAnimation == 2) {
                             additionalTranslationY = -(1.0f - avatarAnimationProgress) * AndroidUtilities.dp(50);
                         }
+                        // Пересчитываем координаты для развёрнутого состояния
+                        refreshNameAndOnlineXY();
                         onlineX = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
                         // Позиционируем имя и статус над кнопками с отступом
                         float buttonContainerHeight = AndroidUtilities.dpf2(56f); // Высота контейнера кнопок
@@ -7701,7 +7788,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 nameTextView[1].setScaleX(1.67f);
                 nameTextView[1].setScaleY(1.67f);
 
-                avatarScale = AndroidUtilities.lerp(1.0f, (42f + 42f + 18f) / 42f, avatarAnimationProgress);
+                avatarScale = AndroidUtilities.lerp(1.0f, (80f + 80f + 18f) / 80f, avatarAnimationProgress);
                 if (storyView != null) {
                     storyView.setExpandProgress(1f);
                 }
@@ -7712,7 +7799,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 avatarImage.setRoundRadius((int) AndroidUtilities.lerp(getSmallAvatarRoundRadius(), 0f, avatarAnimationProgress));
                 avatarContainer.setTranslationX(AndroidUtilities.lerp(avX, 0, avatarAnimationProgress));
                 avatarContainer.setTranslationY(AndroidUtilities.lerp((float) Math.ceil(avY), 0f, avatarAnimationProgress));
-                float extra = (avatarContainer.getMeasuredWidth() - AndroidUtilities.dp(42)) * avatarScale;
+                float extra = (avatarContainer.getMeasuredWidth() - AndroidUtilities.dp(80)) * avatarScale;
                 timeItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(16) + extra);
                 timeItem.setTranslationY(avatarContainer.getY() + AndroidUtilities.dp(15) + extra);
                 starBgItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(28) + extra);
@@ -7742,13 +7829,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 updateEmojiStatusDrawableColor(avatarAnimationProgress);
 
                 final FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
-                params.width = params.height = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(42f), (extraHeight + newTop) / avatarScale, avatarAnimationProgress);
-                params.leftMargin = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(64f), 0f, avatarAnimationProgress);
+                params.width = params.height = (int) AndroidUtilities.lerp(AndroidUtilities.dpf2(80f), (extraHeight + newTop) / avatarScale, avatarAnimationProgress);
+                params.leftMargin = (int) AndroidUtilities.lerp(0f, 0f, avatarAnimationProgress); // Всегда центрированная аватарка
                 avatarContainer.requestLayout();
 
                 updateCollectibleHint();
             } else if (extraHeight <= AndroidUtilities.dp(330f)) {
-                avatarScale = (42 + 18 * diff) / 42.0f;
+                avatarScale = (80 + 18 * diff) / 80.0f;
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -7762,7 +7849,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     // Для центрированного профиля не применяем translation - аватарка остается в исходной позиции
                     avatarContainer.setTranslationX(0);
                     avatarContainer.setTranslationY(0);
-                    float extra = AndroidUtilities.dp(42) * avatarScale - AndroidUtilities.dp(42);
+                    
+                    // Восстанавливаем стандартные LayoutParams для аватарки
+                    FrameLayout.LayoutParams avatarParams = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
+                    avatarParams.width = AndroidUtilities.dp(80);
+                    avatarParams.height = AndroidUtilities.dp(80);
+                    avatarParams.topMargin = AndroidUtilities.dp(45);
+                    avatarParams.leftMargin = 0; // Центрирована по горизонтали
+                    avatarParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                    avatarContainer.requestLayout();
+                    
+                    float extra = AndroidUtilities.dp(80) * avatarScale - AndroidUtilities.dp(80);
                     timeItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(16) + extra);
                     timeItem.setTranslationY(avatarContainer.getY() + AndroidUtilities.dp(15) + extra);
                     starBgItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(28) + extra);
@@ -7770,11 +7867,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     starFgItem.setTranslationX(avatarContainer.getX() + AndroidUtilities.dp(28) + extra);
                     starFgItem.setTranslationY(avatarContainer.getY() + AndroidUtilities.dp(24) + extra);
                 }
-                // Для центрированного профиля оставляем элементы в их исходных позициях
-                nameX = 0;
-                nameY = 0;
-                onlineX = 0;
-                onlineY = 0;
+                // Вычисляем правильные координаты для стандартного состояния
+                refreshNameAndOnlineXY();
                 if (showStatusButton != null) {
                     showStatusButton.setAlpha((int) (0xFF * diff));
                 }
@@ -7783,15 +7877,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         continue;
                     }
                     if (expandAnimator == null || !expandAnimator.isRunning()) {
-                        // Для центрированного профиля оставляем элементы в их исходных позициях
-                        nameTextView[a].setTranslationX(0);
-                        nameTextView[a].setTranslationY(0);
+                        // Применяем правильное позиционирование для стандартного состояния
+                        nameTextView[a].setTranslationX(nameX);
+                        nameTextView[a].setTranslationY(nameY);
 
-                        onlineTextView[a].setTranslationX(0);
-                        onlineTextView[a].setTranslationY(0);
+                        onlineTextView[a].setTranslationX(onlineX);
+                        onlineTextView[a].setTranslationY(onlineY);
                         if (a == 1) {
-                            mediaCounterTextView.setTranslationX(0);
-                            mediaCounterTextView.setTranslationY(0);
+                            mediaCounterTextView.setTranslationX(onlineX);
+                            mediaCounterTextView.setTranslationY(onlineY);
                         }
                     }
                     nameTextView[a].setScaleX(nameScale);
@@ -7814,20 +7908,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
 
 
-        // Обновляем оверлей в зависимости от состояния
-        if (expandedOverlayView != null) {
+        // Обновляем полупрозрачный блок в зависимости от состояния
+        if (expandedTextBackgroundView != null) {
             if (isPulledDown) {
-                expandedOverlayView.setAlpha(1f);
+                expandedTextBackgroundView.setAlpha(1f);
                 if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("ProfileActivity: isPulledDown=true, setting overlay alpha to 1f");
+                    FileLog.d("ProfileActivity: isPulledDown=true, extraHeight=" + extraHeight + ", background alpha=1f");
                 }
             } else {
-                expandedOverlayView.setAlpha(0f);
+                expandedTextBackgroundView.setAlpha(0f);
                 if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("ProfileActivity: isPulledDown=false, setting overlay alpha to 0f");
+                    FileLog.d("ProfileActivity: isPulledDown=false, extraHeight=" + extraHeight + ", background alpha=0f, nameX=" + nameX + ", nameY=" + nameY);
                 }
             }
-            expandedOverlayView.invalidate();
+            expandedTextBackgroundView.invalidate();
         }
 
         updateEmojiStatusEffectPosition();
@@ -7909,10 +8003,40 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void refreshNameAndOnlineXY() {
-        nameX = AndroidUtilities.dp(-21f) + avatarContainer.getMeasuredWidth() * (avatarScale - (42f + 18f) / 42f);
-        nameY = (float) Math.floor(avatarY) + AndroidUtilities.dp(1.3f) + AndroidUtilities.dp(7f) + avatarContainer.getMeasuredHeight() * (avatarScale - (42f + 18f) / 42f) / 2f;
-        onlineX = AndroidUtilities.dp(-21f) + avatarContainer.getMeasuredWidth() * (avatarScale - (42f + 18f) / 42f);
-        onlineY = (float) Math.floor(avatarY) + AndroidUtilities.dp(24) + (float) Math.floor(11 * AndroidUtilities.density) + avatarContainer.getMeasuredHeight() * (avatarScale - (42f + 18f) / 42f) / 2f;
+        // В стандартном состоянии (центрированный профиль) элементы должны быть в центре
+        if (!isPulledDown) {
+            nameX = 0;
+            nameY = 0;
+            onlineX = 0; 
+            onlineY = 0;
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Standard text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+            }
+        } else {
+            // В развёрнутом состоянии (isPulledDown=true) сразу позиционируем текст слева и ОЧЕНЬ высоко
+            nameX = AndroidUtilities.dp(16f); // Фиксированный отступ от левого края
+            nameY = extraHeight + avatarY - AndroidUtilities.dp(300f); // Позиция имени ОЧЕНЬ высоко в развернутом блоке
+            onlineX = AndroidUtilities.dp(16f); // Тот же отступ для статуса
+            onlineY = nameY + AndroidUtilities.dp(30f); // Статус под именем с большим отступом
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Expanded text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+            }
+        }
+        
+        // ПРИНУДИТЕЛЬНО применяем позиции сразу после вычисления
+        for (int a = 0; a < nameTextView.length; a++) {
+            if (nameTextView[a] != null) {
+                nameTextView[a].setTranslationX(nameX);
+                nameTextView[a].setTranslationY(nameY);
+                
+                if (a < onlineTextView.length && onlineTextView[a] != null) {
+                    onlineTextView[a].setTranslationX(onlineX);
+                    onlineTextView[a].setTranslationY(onlineY);
+                }
+            }
+        }
     }
 
     public RecyclerListView getListView() {
