@@ -323,6 +323,34 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         PHONE_OPTION_TELEGRAM_CALL = 2,
         PHONE_OPTION_TELEGRAM_VIDEO_CALL = 3;
 
+    // Класс для представления кнопки действия в профиле
+    private static class ProfileActionButton {
+        public static final int ACTION_MESSAGE = 1;
+        public static final int ACTION_MUTE = 2;
+        public static final int ACTION_CALL = 3;
+        public static final int ACTION_VIDEO = 4;
+        public static final int ACTION_SHARE = 5;
+        public static final int ACTION_STOP = 6;
+        public static final int ACTION_JOIN = 7;
+        public static final int ACTION_REPORT = 8;
+        public static final int ACTION_LEAVE = 9;
+        public static final int ACTION_DISCUSS = 10;
+        public static final int ACTION_LIVE_STREAM = 11;
+        public static final int ACTION_ADD_STORY = 12;
+        public static final int ACTION_VOICE_CHAT = 13;
+        public static final int ACTION_GIFT = 14;
+        
+        public final int action;
+        public final String text;
+        public final int icon;
+        
+        public ProfileActionButton(int action, String text, int icon) {
+            this.action = action;
+            this.text = text;
+            this.icon = icon;
+        }
+    }
+
     private RecyclerListView listView;
     private RecyclerListView searchListView;
     private LinearLayoutManager layoutManager;
@@ -5220,15 +5248,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         avatarContainer2.addView(actionsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 16, 225, 16, 0));
 
-        // Создаем массив данных для кнопок
-        String[] buttonTexts = {"Message", "Unmute", "Call", "Video"};
-        int[] buttonIcons = {R.drawable.message, R.drawable.unmute, R.drawable.call, R.drawable.video};
+        // Динамическое определение кнопок в зависимости от типа профиля
+        ProfileActionButton[] actionButtons = getProfileActionButtons();
         
         // Сохраняем ссылки на кнопки для обновления
-        ImageView[] buttonIconViews = new ImageView[4];
-        TextView[] buttonTextViews = new TextView[4];
+        ImageView[] buttonIconViews = new ImageView[actionButtons.length];
+        TextView[] buttonTextViews = new TextView[actionButtons.length];
         
-        for (int i = 0; i < buttonTexts.length; i++) {
+        for (int i = 0; i < actionButtons.length; i++) {
             LinearLayout buttonLayout = new LinearLayout(context);
             buttonLayout.setOrientation(LinearLayout.VERTICAL);
             buttonLayout.setGravity(Gravity.CENTER);
@@ -5254,10 +5281,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             // Создаем иконку
             ImageView iconView = new ImageView(context);
             
-            // Для кнопки мута устанавливаем правильную иконку изначально
-            int iconResource = buttonIcons[i];
-            String buttonText = buttonTexts[i];
-            if (i == 1) { // Кнопка мута
+            // Получаем данные кнопки и устанавливаем правильные иконку и текст
+            ProfileActionButton button = actionButtons[i];
+            int iconResource = button.icon;
+            String buttonText = button.text;
+            
+            // Специальная обработка для кнопки мута
+            if (button.action == ProfileActionButton.ACTION_MUTE) {
                 boolean muted = getMessagesController().isDialogMuted(getDialogId(), topicId);
                 if (muted) {
                     iconResource = R.drawable.unmute;
@@ -5289,26 +5319,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             
             // Добавляем обработчик клика
             final int buttonIndex = i;
-            buttonLayout.setOnClickListener(v -> {
-                switch (buttonIndex) {
-                    case 0: // Message
-                        onWriteButtonClick();
-                        break;
-                    case 1: // Unmute
-                        toggleMute(buttonIconViews[1], buttonTextViews[1]);
-                        break;
-                    case 2: // Call
-                        if (userId != 0) {
-                            VoIPHelper.startCall(getMessagesController().getUser(userId), false, false, getParentActivity(), userInfo, getAccountInstance());
-                        }
-                        break;
-                    case 3: // Video
-                        if (userId != 0) {
-                            VoIPHelper.startCall(getMessagesController().getUser(userId), true, false, getParentActivity(), userInfo, getAccountInstance());
-                        }
-                        break;
-                }
-            });
+            final ProfileActionButton currentButton = actionButtons[i];
+            buttonLayout.setOnClickListener(v -> handleActionButtonClick(currentButton, buttonIconViews[buttonIndex], buttonTextViews[buttonIndex]));
             
             // Добавляем кнопку в контейнер с равномерным распределением и отступами
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutHelper.WRAP_CONTENT, 1.0f);
@@ -5444,7 +5456,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         expandAnimator.addUpdateListener(anim -> {
             setAvatarExpandProgress(anim.getAnimatedFraction());
         });
-        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+        expandAnimator.setDuration(400);
         expandAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
@@ -5914,29 +5927,29 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         updateEmojiStatusDrawableColor(value);
 
-        // Плавные переходы текста как в оригинальном Telegram
-        // Рассчитываем целевые позиции для развёрнутого состояния
-        final float expandedLeftMargin = AndroidUtilities.dp(16f);
-        final float expandedNameY = extraHeight + newTop - AndroidUtilities.dp(100f);
-        final float expandedOnlineY = extraHeight + newTop - AndroidUtilities.dp(75f);
-        
-        // Плавная интерполяция между стандартными и развёрнутыми позициями
-        float currentNameX = AndroidUtilities.lerp(nameX, expandedLeftMargin, value);
-        float currentNameY = AndroidUtilities.lerp(nameY, expandedNameY, value);
-        float currentOnlineX = AndroidUtilities.lerp(onlineX, expandedLeftMargin, value);
-        float currentOnlineY = AndroidUtilities.lerp(onlineY, expandedOnlineY, value);
-        
-        // Применяем плавные позиции
-        nameTextView[1].setTranslationX(currentNameX);
-        nameTextView[1].setTranslationY(currentNameY);
-        onlineTextView[1].setTranslationX(currentOnlineX + customPhotoOffset);
-        onlineTextView[1].setTranslationY(currentOnlineY);
-        mediaCounterTextView.setTranslationX(currentOnlineX);
-        mediaCounterTextView.setTranslationY(currentOnlineY);
-        
-        if (BuildVars.LOGS_ENABLED) {
-            FileLog.d("ProfileActivity: Smooth text positions - value=" + value + ", nameX=" + currentNameX + ", nameY=" + currentNameY + ", onlineX=" + currentOnlineX + ", onlineY=" + currentOnlineY);
-        }
+        // Плавные переходы текста с квадратичными кривыми Безье как в стабильной версии
+        final float k = AndroidUtilities.dpf2(8f);
+
+        final float nameTextViewXEnd = AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft();
+        final float nameTextViewYEnd = newTop + extraHeight - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom();
+        final float nameTextViewCx = k + nameX + (nameTextViewXEnd - nameX) / 2f;
+        final float nameTextViewCy = k + nameY + (nameTextViewYEnd - nameY) / 2f;
+        final float nameTextViewX = (1 - value) * (1 - value) * nameX + 2 * (1 - value) * value * nameTextViewCx + value * value * nameTextViewXEnd;
+        final float nameTextViewY = (1 - value) * (1 - value) * nameY + 2 * (1 - value) * value * nameTextViewCy + value * value * nameTextViewYEnd;
+
+        final float onlineTextViewXEnd = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
+        final float onlineTextViewYEnd = newTop + extraHeight - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom();
+        final float onlineTextViewCx = k + onlineX + (onlineTextViewXEnd - onlineX) / 2f;
+        final float onlineTextViewCy = k + onlineY + (onlineTextViewYEnd - onlineY) / 2f;
+        final float onlineTextViewX = (1 - value) * (1 - value) * onlineX + 2 * (1 - value) * value * onlineTextViewCx + value * value * onlineTextViewXEnd;
+        final float onlineTextViewY = (1 - value) * (1 - value) * onlineY + 2 * (1 - value) * value * onlineTextViewCy + value * value * onlineTextViewYEnd;
+
+        nameTextView[1].setTranslationX(nameTextViewX);
+        nameTextView[1].setTranslationY(nameTextViewY);
+        onlineTextView[1].setTranslationX(onlineTextViewX + customPhotoOffset);
+        onlineTextView[1].setTranslationY(onlineTextViewY);
+        mediaCounterTextView.setTranslationX(onlineTextViewX);
+        mediaCounterTextView.setTranslationY(onlineTextViewY);
         final Object onlineTextViewTag = onlineTextView[1].getTag();
         int statusColor;
         boolean online = false;
@@ -6080,6 +6093,404 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return userId;
         } else {
             return -chatId;
+        }
+    }
+
+    // Определяет кнопки для разных типов профилей
+    private ProfileActionButton[] getProfileActionButtons() {
+        ArrayList<ProfileActionButton> buttons = new ArrayList<>();
+        
+        if (userId != 0) {
+            // Профиль пользователя
+            TLRPC.User user = getMessagesController().getUser(userId);
+            if (user != null) {
+                if (user.bot) {
+                    // Профиль бота: Message, Mute/Unmute, Share, Stop
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_SHARE, "Share", R.drawable.share));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_STOP, "Stop", R.drawable.block));
+                } else if (userInfo != null && userInfo.business_work_hours != null) {
+                    // Бизнес профиль: Message, Mute/Unmute, Call, Video (как у пользователя)
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_CALL, "Call", R.drawable.call));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_VIDEO, "Video", R.drawable.video));
+                } else {
+                    // Обычный профиль пользователя: Message, Mute/Unmute, Call, Video
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_CALL, "Call", R.drawable.call));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_VIDEO, "Video", R.drawable.video));
+                }
+            }
+        } else if (chatId != 0) {
+            TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            if (chat != null) {
+                if (isTopic) {
+                    // Тема форума: Message, Mute/Unmute
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                } else if (ChatObject.isForum(chat)) {
+                    // Форум: Message, Mute/Unmute, Leave
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                    buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LEAVE, "Leave", R.drawable.msg_leave));
+                } else if (ChatObject.isChannel(chat)) {
+                    // Канал
+                    if (ChatObject.isNotInChat(chat)) {
+                        // Не в канале: Join, Mute/Unmute, Share, Report
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_JOIN, "Join", R.drawable.join));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_SHARE, "Share", R.drawable.share));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_REPORT, "Report", R.drawable.report));
+                    } else if (chat.creator) {
+                        // Свой канал: Live Stream, Mute/Unmute, Add Story
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LIVE_STREAM, "Live Stream", R.drawable.live_stream));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_ADD_STORY, "Add Story", R.drawable.story));
+                    } else {
+                        // В канале
+                        if (chatInfo != null && chatInfo.linked_chat_id != 0) {
+                            // Есть обсуждения: Mute/Unmute, Discuss, Share, Leave
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_DISCUSS, "Discuss", R.drawable.msg2_discussion));
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_SHARE, "Share", R.drawable.share));
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LEAVE, "Leave", R.drawable.msg_leave));
+                        } else {
+                            // Нет обсуждений: Mute/Unmute, Share, Leave
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_SHARE, "Share", R.drawable.share));
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LEAVE, "Leave", R.drawable.msg_leave));
+                        }
+                    }
+                } else {
+                    // Обычный чат
+                    boolean hasVoiceChat = chat.call_active && chat.call_not_empty;
+                    if (hasVoiceChat) {
+                        // Message, Mute/Unmute, Voice Chat, Leave
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_VOICE_CHAT, "Voice Chat", R.drawable.msg_voicechat2));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LEAVE, "Leave", R.drawable.msg_leave));
+                    } else {
+                        // Message, Mute/Unmute, Leave
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_LEAVE, "Leave", R.drawable.msg_leave));
+                    }
+                }
+            }
+        }
+        
+        return buttons.toArray(new ProfileActionButton[0]);
+    }
+
+    // Обрабатывает клик по кнопке действия
+    private void handleActionButtonClick(ProfileActionButton button, ImageView iconView, TextView textView) {
+        switch (button.action) {
+            case ProfileActionButton.ACTION_MESSAGE:
+                onWriteButtonClick();
+                break;
+                
+            case ProfileActionButton.ACTION_MUTE:
+                showMuteContextMenu(iconView, textView);
+                break;
+                
+            case ProfileActionButton.ACTION_CALL:
+                if (userId != 0) {
+                    handleCallButtonClick(false);
+                }
+                break;
+                
+            case ProfileActionButton.ACTION_VIDEO:
+                if (userId != 0) {
+                    handleCallButtonClick(true);
+                }
+                break;
+                
+            case ProfileActionButton.ACTION_SHARE:
+                shareProfile();
+                break;
+                
+            case ProfileActionButton.ACTION_STOP:
+                stopBot();
+                break;
+                
+            case ProfileActionButton.ACTION_JOIN:
+                joinChannel();
+                break;
+                
+            case ProfileActionButton.ACTION_REPORT:
+                reportProfile();
+                break;
+                
+            case ProfileActionButton.ACTION_LEAVE:
+                leaveChat();
+                break;
+                
+            case ProfileActionButton.ACTION_DISCUSS:
+                openDiscussion();
+                break;
+                
+            case ProfileActionButton.ACTION_LIVE_STREAM:
+                startLiveStream();
+                break;
+                
+            case ProfileActionButton.ACTION_ADD_STORY:
+                addStory();
+                break;
+                
+            case ProfileActionButton.ACTION_VOICE_CHAT:
+                joinVoiceChat();
+                break;
+                
+            case ProfileActionButton.ACTION_GIFT:
+                openGifts();
+                break;
+        }
+    }
+
+    // Показывает контекстное меню для кнопки мута
+    private void showMuteContextMenu(ImageView iconView, TextView textView) {
+        long did = getDialogId();
+        boolean currentlyMuted = getMessagesController().isDialogMuted(did, topicId);
+        
+        if (currentlyMuted) {
+            // Если уже заглушено, просто снимаем мут
+            toggleMute(iconView, textView);
+            return;
+        }
+        
+        // Создаем и показываем контекстное меню для мута
+        ChatNotificationsPopupWrapper popup = new ChatNotificationsPopupWrapper(getContext(), currentAccount, null, true, true, new ChatNotificationsPopupWrapper.Callback() {
+            @Override
+            public void toggleMute() {
+                ProfileActivity.this.toggleMute(iconView, textView);
+                // Обновляем UI
+                updateMuteButtonState(iconView, textView);
+            }
+
+            @Override
+            public void toggleSound() {
+                // Переключение звука уведомлений
+                getNotificationsController().muteDialog(did, topicId, true);
+                updateMuteButtonState(iconView, textView);
+            }
+
+            @Override
+            public void muteFor(int time) {
+                // Заглушить на определенное время
+                getNotificationsController().muteUntil(did, topicId, time);
+                updateMuteButtonState(iconView, textView);
+            }
+
+            @Override
+            public void showCustomize() {
+                Bundle args = new Bundle();
+                args.putLong("dialog_id", did);
+                args.putLong("topic_id", topicId);
+                presentFragment(new ProfileNotificationsActivity(args, resourcesProvider));
+            }
+
+            @Override
+            public void openExceptions() {
+                if (topicId != 0 && chatId != 0) {
+                    Bundle bundle = new Bundle();
+                    bundle.putLong("dialog_id", did);
+                    TopicsNotifySettingsFragments notifySettings = new TopicsNotifySettingsFragments(bundle);
+                    notifySettings.setExceptions(notificationsExceptionTopics);
+                    presentFragment(notifySettings);
+                }
+            }
+        }, getResourceProvider());
+        
+        popup.update(did, topicId, notificationsExceptionTopics);
+        
+        // Позиционируем меню относительно кнопки
+        int[] location = new int[2];
+        iconView.getLocationInWindow(location);
+        popup.showAsOptions(this, iconView, location[0], location[1]);
+    }
+
+    // Обрабатывает клик по кнопке звонка с проверкой приватности
+    private void handleCallButtonClick(boolean videoCall) {
+        if (userId == 0) return;
+        
+        TLRPC.User user = getMessagesController().getUser(userId);
+        if (user == null) return;
+        
+        // Проверяем можем ли мы позвонить (используем существующую логику VoIPHelper)
+        // Попробуем начать звонок, VoIPHelper сам проверит ограничения
+        VoIPHelper.startCall(user, videoCall, false, getParentActivity(), userInfo, getAccountInstance());
+    }
+
+    // Показывает диалог при ограничениях на звонки
+    private void showCallPrivacyDialog(TLRPC.User user, boolean videoCall) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), resourcesProvider);
+        
+        LinearLayout content = new LinearLayout(getContext());
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(16), AndroidUtilities.dp(24), AndroidUtilities.dp(8));
+        
+        // Иконка ссылки
+        ImageView iconView = new ImageView(getContext());
+        iconView.setImageResource(R.drawable.msg_link2);
+        iconView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogIcon), PorterDuff.Mode.SRC_IN));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(AndroidUtilities.dp(48), AndroidUtilities.dp(48));
+        iconParams.gravity = Gravity.CENTER_HORIZONTAL;
+        iconParams.bottomMargin = AndroidUtilities.dp(16);
+        content.addView(iconView, iconParams);
+        
+        // Текст
+        TextView messageText = new TextView(getContext());
+        String userName = UserObject.getFirstName(user);
+        String text = userName + " restricts calling them. You can send them an invite link instead.";
+        messageText.setText(text);
+        messageText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        messageText.setGravity(Gravity.CENTER);
+        messageText.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+        content.addView(messageText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 16));
+        
+        builder.setView(content);
+        builder.setPositiveButton("Send Invite Link", (dialog, which) -> {
+            // Отправляем ссылку-приглашение
+            sendCallInviteLink(user, videoCall);
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        
+        AlertDialog dialog = builder.create();
+        showDialog(dialog);
+    }
+
+    // Отправляет ссылку-приглашение на звонок
+    private void sendCallInviteLink(TLRPC.User user, boolean videoCall) {
+        // Создаем ссылку-приглашение для звонка
+        String callType = videoCall ? "video call" : "voice call";
+        String inviteText = "I'd like to have a " + callType + " with you. Click the link to join: ";
+        
+        // Открываем чат с пользователем
+        Bundle args = new Bundle();
+        args.putLong("user_id", userId);
+        
+        if (!getMessagesController().checkCanOpenChat(args, ProfileActivity.this)) {
+            return;
+        }
+        
+        ChatActivity chatActivity = new ChatActivity(args);
+        presentFragment(chatActivity, true);
+    }
+
+    // Обновляет состояние кнопки мута
+    private void updateMuteButtonState(ImageView iconView, TextView textView) {
+        boolean muted = getMessagesController().isDialogMuted(getDialogId(), topicId);
+        if (muted) {
+            iconView.setImageResource(R.drawable.unmute);
+            textView.setText("Unmute");
+        } else {
+            iconView.setImageResource(R.drawable.mute);
+            textView.setText("Mute");
+        }
+    }
+
+    // Методы для обработки других действий кнопок
+    private void shareProfile() {
+        if (userId != 0) {
+            TLRPC.User user = getMessagesController().getUser(userId);
+            if (user != null) {
+                String username = UserObject.getPublicUsername(user);
+                if (username != null) {
+                    String link = "https://" + getMessagesController().linkPrefix + "/" + username;
+                    ShareAlert shareAlert = new ShareAlert(getParentActivity(), null, link, false, link, false);
+                    shareAlert.show();
+                }
+            }
+        } else if (chatId != 0) {
+            TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            if (chat != null) {
+                String username = ChatObject.getPublicUsername(chat);
+                if (username != null) {
+                    String link = "https://" + getMessagesController().linkPrefix + "/" + username;
+                    ShareAlert shareAlert = new ShareAlert(getParentActivity(), null, link, false, link, false);
+                    shareAlert.show();
+                }
+            }
+        }
+    }
+
+    private void stopBot() {
+        if (userId != 0) {
+            getMessagesController().blockPeer(userId);
+            BulletinFactory.createBanBulletin(this, true).show();
+        }
+    }
+
+    private void joinChannel() {
+        if (chatId != 0) {
+            getMessagesController().addUserToChat(chatId, getUserConfig().getCurrentUser(), 0, null, this, true, () -> {
+                updateRowsIds();
+                if (listAdapter != null) {
+                    listAdapter.notifyDataSetChanged();
+                }
+            }, null);
+        }
+    }
+
+    private void reportProfile() {
+        if (userId != 0) {
+            ReportBottomSheet.openChat(this, userId);
+        } else if (chatId != 0) {
+            ReportBottomSheet.openChat(this, getDialogId());
+        }
+    }
+
+    private void leaveChat() {
+        if (chatId != 0) {
+            TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), resourcesProvider);
+            
+            if (ChatObject.isChannel(chat) && !chat.megagroup) {
+                builder.setMessage(LocaleController.getString(R.string.ChannelLeaveAlert));
+            } else {
+                builder.setMessage(LocaleController.getString(R.string.AreYouSureDeleteAndExit));
+            }
+            
+            builder.setTitle(LocaleController.getString(R.string.AppName));
+            builder.setPositiveButton(LocaleController.getString(R.string.LeaveMegaMenu), (dialogInterface, i) -> {
+                getMessagesController().deleteParticipantFromChat(chatId, getMessagesController().getUser(getUserConfig().getClientUserId()));
+                finishFragment();
+            });
+            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+            showDialog(builder.create());
+        }
+    }
+
+    private void startLiveStream() {
+        // TODO: Реализовать запуск прямого эфира
+        if (chatId != 0) {
+            // Показать интерфейс для начала стрима
+        }
+    }
+
+    private void addStory() {
+        // TODO: Реализовать добавление истории
+        if (getMessagesController().getStoriesController().canPostStories(getDialogId())) {
+            StoryRecorder.getInstance(getParentActivity(), currentAccount)
+                    .selectedPeerId(getDialogId())
+                    .open(StoryRecorder.SourceView.fromStoryCell(null));
+        }
+    }
+
+    private void joinVoiceChat() {
+        if (chatId != 0) {
+            VoIPHelper.startCall(getMessagesController().getChat(chatId), null, null, false, getParentActivity(), this, getAccountInstance());
+        }
+    }
+
+    private void openGifts() {
+        // Открыть раздел подарков
+        if (sharedMediaLayout != null) {
+            sharedMediaLayout.scrollToPage(SharedMediaLayout.TAB_GIFTS);
         }
     }
 
@@ -7529,10 +7940,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (writeButton != null) {
                 writeButton.setTranslationY((actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() + extraHeight + searchTransitionOffset - AndroidUtilities.dp(29.5f));
 
-                boolean writeButtonVisible = diff > 0.2f && !searchMode && (imageUpdater == null || setAvatarRow == -1);
-                if (writeButtonVisible && chatId != 0) {
-                    writeButtonVisible = ChatObject.isChannel(currentChat) && !currentChat.megagroup && chatInfo != null && chatInfo.linked_chat_id != 0 && infoHeaderRow != -1;
-                }
+                // Отключаем старую кнопку writeButton, используем новые кнопки в блоке профиля
+                boolean writeButtonVisible = false; // diff > 0.2f && !searchMode && (imageUpdater == null || setAvatarRow == -1);
+                // if (writeButtonVisible && chatId != 0) {
+                //     writeButtonVisible = ChatObject.isChannel(currentChat) && !currentChat.megagroup && chatInfo != null && chatInfo.linked_chat_id != 0 && infoHeaderRow != -1;
+                // }
                 if (!openAnimationInProgress) {
                     boolean currentVisible = writeButton.getTag() == null;
                     if (writeButtonVisible != currentVisible) {
@@ -7549,7 +7961,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (animated) {
                             writeButtonAnimation = new AnimatorSet();
                             if (writeButtonVisible) {
-                                writeButtonAnimation.setInterpolator(new DecelerateInterpolator());
+                                writeButtonAnimation.setInterpolator(CubicBezierInterpolator.EASE_OUT);
                                 writeButtonAnimation.playTogether(
                                         ObjectAnimator.ofFloat(writeButton, View.SCALE_X, 1.0f),
                                         ObjectAnimator.ofFloat(writeButton, View.SCALE_Y, 1.0f),
@@ -7646,11 +8058,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         expandAnimatorValues[0] = value;
                         expandAnimatorValues[1] = 1f;
                         if (storyView != null && !storyView.isEmpty()) {
-                            expandAnimator.setInterpolator(new FastOutSlowInInterpolator());
-                            expandAnimator.setDuration((long) ((1f - value) * 1.3f * 250f / durationFactor));
+                            expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+                            expandAnimator.setDuration((long) ((1f - value) * 1.4f * 300f / durationFactor));
                         } else {
-                            expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
-                            expandAnimator.setDuration((long) ((1f - value) * 250f / durationFactor));
+                            expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+                            expandAnimator.setDuration((long) ((1f - value) * 300f / durationFactor));
                         }
                         expandAnimator.addListener(new AnimatorListenerAdapter() {
                             @Override
@@ -7719,9 +8131,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         float value = AndroidUtilities.lerp(expandAnimatorValues, currentExpanAnimatorFracture);
                         expandAnimatorValues[0] = value;
                         expandAnimatorValues[1] = 0f;
-                        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
+                        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_IN);
                         if (!isInLandscapeMode) {
-                            expandAnimator.setDuration((long) (value * 250f / durationFactor));
+                            expandAnimator.setDuration((long) (value * 300f / durationFactor));
                         } else {
                             expandAnimator.setDuration(0);
                         }
@@ -8099,14 +8511,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     qrItem.setVisibility(View.VISIBLE);
                 }
                 if (setQrVisible) {
-                    qrItemAnimation.setInterpolator(new DecelerateInterpolator());
+                    qrItemAnimation.setInterpolator(CubicBezierInterpolator.EASE_OUT);
                     qrItemAnimation.playTogether(
                             ObjectAnimator.ofFloat(qrItem, View.ALPHA, 1.0f),
                             ObjectAnimator.ofFloat(qrItem, View.SCALE_Y, 1f),
                             ObjectAnimator.ofFloat(avatarsViewPagerIndicatorView, View.TRANSLATION_X, -AndroidUtilities.dp(48))
                     );
                 } else {
-                    qrItemAnimation.setInterpolator(new AccelerateInterpolator());
+                    qrItemAnimation.setInterpolator(CubicBezierInterpolator.EASE_IN);
                     qrItemAnimation.playTogether(
                             ObjectAnimator.ofFloat(qrItem, View.ALPHA, 0.0f),
                             ObjectAnimator.ofFloat(qrItem, View.SCALE_Y, 0f),
@@ -9296,7 +9708,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     fragmentView.invalidate();
                 }
             });
-            animatorSet.setInterpolator(playProfileAnimation == 2 ? CubicBezierInterpolator.DEFAULT : new DecelerateInterpolator());
+            animatorSet.setInterpolator(playProfileAnimation == 2 ? CubicBezierInterpolator.EASE_OUT : CubicBezierInterpolator.EASE_OUT);
 
             AndroidUtilities.runOnUIThread(animatorSet::start, 50);
             return animatorSet;
@@ -10916,8 +11328,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         animatingItem = null;
 
         editItemVisible = false;
-        callItemVisible = false;
-        videoCallItemVisible = false;
+        callItemVisible = false; // Отключаем старые кнопки звонков, используем новые в блоке профиля
+        videoCallItemVisible = false; // Отключаем старые кнопки видеозвонков, используем новые в блоке профиля
         canSearchMembers = false;
         boolean selfUser = false;
 
@@ -10946,8 +11358,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
 
                 if (userInfo != null && userInfo.phone_calls_available) {
-                    callItemVisible = true;
-                    videoCallItemVisible = Build.VERSION.SDK_INT >= 18 && userInfo.video_calls_available;
+                    // Отключено: используем новые кнопки в блоке профиля вместо старых в action bar
+                    // callItemVisible = true;
+                    // videoCallItemVisible = Build.VERSION.SDK_INT >= 18 && userInfo.video_calls_available;
                 }
                 if (isBot || getContactsController().contactsDict.get(userId) == null) {
                     if (MessagesController.isSupportUser(user)) {
@@ -11034,7 +11447,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         otherItem.addSubItem(statistics, R.drawable.msg_stats, LocaleController.getString(R.string.Statistics));
                     }
                     ChatObject.Call call = getMessagesController().getGroupCall(chatId, false);
-                    callItemVisible = call != null;
+                    // Отключено: используем новые кнопки в блоке профиля
+                    // callItemVisible = call != null;
                 }
                 if (chat.megagroup) {
                     if (chatInfo == null || !chatInfo.participants_hidden || ChatObject.hasAdminRights(chat)) {
@@ -11073,7 +11487,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         hasVoiceChatItem = true;
                     }
                     ChatObject.Call call = getMessagesController().getGroupCall(chatId, false);
-                    callItemVisible = call != null;
+                    // Отключено: используем новые кнопки в блоке профиля
+                    // callItemVisible = call != null;
                 }
                 if (ChatObject.canChangeChatInfo(chat)) {
                     editItemVisible = true;
