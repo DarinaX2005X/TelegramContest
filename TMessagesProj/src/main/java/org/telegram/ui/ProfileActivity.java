@@ -339,6 +339,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         public static final int ACTION_ADD_STORY = 12;
         public static final int ACTION_VOICE_CHAT = 13;
         public static final int ACTION_GIFT = 14;
+        // Новые действия для собственного профиля
+        public static final int ACTION_EDIT_PROFILE = 15;
+        public static final int ACTION_QR_CODE = 16;
+        public static final int ACTION_PREMIUM = 17;
+        public static final int ACTION_SHARE_PROFILE = 18;
+        public static final int ACTION_PRIVACY = 19;
+        public static final int ACTION_CHANGE_AVATAR = 20;
         
         public final int action;
         public final String text;
@@ -6104,7 +6111,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             // Профиль пользователя
             TLRPC.User user = getMessagesController().getUser(userId);
             if (user != null) {
-                if (user.bot) {
+                // Проверяем собственный профиль
+                if (userId == getUserConfig().getClientUserId()) {
+                    if (myProfile) {
+                        // Страница "Мой профиль": Edit Profile, QR Code, Premium, Story/Share
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_EDIT_PROFILE, "Edit Profile", R.drawable.group_edit_profile));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_QR_CODE, "QR Code", R.drawable.msg_qr_mini));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_PREMIUM, "Premium", R.drawable.msg_settings_premium));
+                        if (getMessagesController().getStoriesController().canPostStories(getDialogId())) {
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_ADD_STORY, "Add Story", R.drawable.story));
+                        } else {
+                            buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_SHARE_PROFILE, "Share Profile", R.drawable.share));
+                        }
+                    } else {
+                        // Настройки: Change Avatar, QR Code, Premium, Privacy
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_CHANGE_AVATAR, "Change Avatar", R.drawable.msg_edit));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_QR_CODE, "QR Code", R.drawable.msg_qr_mini));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_PREMIUM, "Premium", R.drawable.msg_settings_premium));
+                        buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_PRIVACY, "Privacy", R.drawable.msg2_secret));
+                    }
+                } else if (user.bot) {
                     // Профиль бота: Message, Mute/Unmute, Share, Stop
                     buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MESSAGE, "Message", R.drawable.message));
                     buttons.add(new ProfileActionButton(ProfileActionButton.ACTION_MUTE, "Mute", R.drawable.mute));
@@ -6247,6 +6273,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 
             case ProfileActionButton.ACTION_GIFT:
                 openGifts();
+                break;
+                
+            case ProfileActionButton.ACTION_EDIT_PROFILE:
+                openEditProfile();
+                break;
+                
+            case ProfileActionButton.ACTION_QR_CODE:
+                openQRCode();
+                break;
+                
+            case ProfileActionButton.ACTION_PREMIUM:
+                openPremium();
+                break;
+                
+            case ProfileActionButton.ACTION_SHARE_PROFILE:
+                shareProfile();
+                break;
+                
+            case ProfileActionButton.ACTION_PRIVACY:
+                openPrivacySettings();
+                break;
+                
+            case ProfileActionButton.ACTION_CHANGE_AVATAR:
+                changeAvatar();
                 break;
         }
     }
@@ -6492,6 +6542,50 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (sharedMediaLayout != null) {
             sharedMediaLayout.scrollToPage(SharedMediaLayout.TAB_GIFTS);
         }
+    }
+
+    // Методы для обработки действий собственного профиля
+    private void openEditProfile() {
+        // Открыть редактирование профиля (только для myProfile=true)
+        presentFragment(new UserInfoActivity());
+    }
+
+    private void changeAvatar() {
+        // Изменить аватар (только для myProfile=false, в настройках)
+        if (imageUpdater != null) {
+            TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(UserConfig.getInstance(currentAccount).getClientUserId());
+            if (user != null) {
+                if (user.photo != null && user.photo.photo_big != null && !(user.photo instanceof TLRPC.TL_userProfilePhotoEmpty)) {
+                    imageUpdater.openMenu(true, () -> {
+                        MessagesController.getInstance(currentAccount).deleteUserPhoto(null);
+                    }, dialog -> {}, 0);
+                } else {
+                    imageUpdater.openMenu(false, null, dialog -> {}, 0);
+                }
+            }
+        }
+    }
+
+    private void openQRCode() {
+        // Открыть QR код профиля
+        Bundle args = new Bundle();
+        args.putLong("chat_id", chatId);
+        args.putLong("user_id", userId);
+        presentFragment(new QrActivity(args));
+    }
+
+    private void openPremium() {
+        // Открыть страницу премиума
+        if (myProfile) {
+            presentFragment(new PremiumPreviewFragment("my_profile"));
+        } else {
+            presentFragment(new PremiumPreviewFragment("profile"));
+        }
+    }
+
+    private void openPrivacySettings() {
+        // Открыть настройки приватности
+        presentFragment(new PrivacySettingsActivity());
     }
 
     public void getEmojiStatusLocation(Rect rect) {
