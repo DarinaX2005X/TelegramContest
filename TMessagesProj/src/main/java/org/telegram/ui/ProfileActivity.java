@@ -835,7 +835,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return topicId;
     }
 
-    public static class AvatarImageView extends BackupImageView {
+    public  static class AvatarImageView extends BackupImageView {
 
         private final RectF rect = new RectF();
         private final Paint placeholderPaint;
@@ -1045,10 +1045,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         private int currentColor;
         private Paint paint = new Paint();
+        private float scrollUpProgress = 0.0f; // Прогресс втягивания премиум эффектов
 
         public TopView(Context context) {
             super(context);
             setWillNotDraw(false);
+        }
+        
+        // Устанавливает прогресс втягивания премиум эффектов
+        public void setScrollUpProgress(float progress) {
+            if (this.scrollUpProgress != progress) {
+                this.scrollUpProgress = progress;
+                invalidate();
+            }
         }
 
         @Override
@@ -1199,7 +1208,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         final float avatarY = avatarContainer.getY() + avatarContainer.getHeight() / 2.0f;
                         final float avatarRadius = Math.min(avatarContainer.getWidth(), avatarContainer.getHeight()) / 2.0f;
                         
-                        StarGiftPatterns.drawProfilePatternAroundAvatar(canvas, emoji, avatarX, avatarY, avatarRadius, Math.min(1f, extraHeight / dp(330)), full);
+                        // Передаем scrollUpProgress для анимации втягивания премиум эффектов
+                        StarGiftPatterns.drawProfilePatternAroundAvatar(canvas, emoji, avatarX, avatarY, avatarRadius, Math.min(1f, extraHeight / dp(330)), full, scrollUpProgress);
                         canvas.restore();
                     }
                 }
@@ -8326,43 +8336,50 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 params.leftMargin = (int) AndroidUtilities.lerp(0f, 0f, avatarAnimationProgress); // Всегда центрированная аватарка
                 avatarContainer.requestLayout();
 
+                // В развернутом состоянии плавно начинаем втягивание при приближении к границе
+                float developedStateProgress = 0f;
+                if (extraHeight < AndroidUtilities.dp(360f)) {
+                    // Плавный переход от развернутого к обычному состоянию
+                    developedStateProgress = Math.max(0f, Math.min(1f, (AndroidUtilities.dp(360f) - extraHeight) / AndroidUtilities.dp(60f)));
+                }
+                if (topView != null) {
+                    topView.setScrollUpProgress(developedStateProgress);
+                }
+                if (giftsView != null) {
+                    giftsView.setScrollUpProgress(developedStateProgress);
+                }
+
                 updateCollectibleHint();
             } else if (extraHeight <= AndroidUtilities.dp(330f)) {
-                // Рассчитываем прогресс скролла вверх для свёрнутого состояния
-                // Scroll-up анимация начинается только при экстра малых значениях extraHeight (реальный скролл вверх)
-                // Пороговое значение 150dp - ниже этого начинается scroll-up анимация для UI элементов
-                float scrollUpThreshold = AndroidUtilities.dp(150f);
-                float scrollUpProgress = 0f;
-                if (extraHeight < scrollUpThreshold) {
-                    scrollUpProgress = Math.max(0f, Math.min(1f, (scrollUpThreshold - extraHeight) / scrollUpThreshold));
-                }
-                
-                // Для подарков используем отдельный прогресс - начинаем втягивание намного раньше
-                // Подарки начинают втягиваться когда extraHeight < 280dp (почти сразу после начала скролла)
-                float giftsScrollThreshold = AndroidUtilities.dp(280f);
-                float giftsScrollProgress = 0f;
-                if (extraHeight < giftsScrollThreshold) {
-                    giftsScrollProgress = Math.max(0f, Math.min(1f, (giftsScrollThreshold - extraHeight) / giftsScrollThreshold));
+                // ЕДИНЫЙ ПРОГРЕСС ДЛЯ ВСЕХ АНИМАЦИЙ: начинаем все элементы одновременно
+                // Используем порог 200dp - анимация начинается только при реальном скролле вверх от стандартного состояния
+                float unifiedScrollThreshold = AndroidUtilities.dp(200f);
+                float unifiedScrollProgress = 0f;
+                if (extraHeight < unifiedScrollThreshold) {
+                    unifiedScrollProgress = Math.max(0f, Math.min(1f, (unifiedScrollThreshold - extraHeight) / unifiedScrollThreshold));
                 }
                 
                 avatarScale = (80 + 18 * diff) / 80.0f;
                 if (storyView != null) {
                     storyView.invalidate();
                 }
+                // Все элементы получают ОДИНАКОВЫЙ прогресс для плавной синхронной анимации
                 if (giftsView != null) {
-                    // Передаём ранний прогресс скролла в подарки для заметного втягивания
-                    giftsView.setScrollUpProgress(giftsScrollProgress);
+                    giftsView.setScrollUpProgress(unifiedScrollProgress);
                     giftsView.invalidate();
+                }
+                if (topView != null) {
+                    topView.setScrollUpProgress(unifiedScrollProgress);
                 }
                 float nameScale = 1.0f + 0.12f * diff;
                 
                 if (expandAnimator == null || !expandAnimator.isRunning()) {
-                    if (scrollUpProgress > 0f) {
-                        // SCROLL-UP СОСТОЯНИЕ: применяем анимацию сворачивания
+                    if (unifiedScrollProgress > 0f) {
+                        // UNIFIED SCROLL СОСТОЯНИЕ: все элементы анимируются синхронно
                         
                         // АВАТАРКА: плавное движение вверх и уменьшение при скролле
-                        float avatarTranslationY = -scrollUpProgress * AndroidUtilities.dp(150f); // Поднимается на 150dp вверх
-                        float avatarFinalScale = avatarScale * (1f - scrollUpProgress * 0.6f); // Уменьшается на 60%
+                        float avatarTranslationY = -unifiedScrollProgress * AndroidUtilities.dp(150f); // Поднимается на 150dp вверх
+                        float avatarFinalScale = avatarScale * (1f - unifiedScrollProgress * 0.6f); // Уменьшается на 60%
                         
                         avatarContainer.setScaleX(avatarFinalScale);
                         avatarContainer.setScaleY(avatarFinalScale);
@@ -8438,19 +8455,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         float targetOnlineX = AndroidUtilities.dp(56f) - (onlineTextView[1] != null ? onlineTextView[1].getLeft() : 0);
                         float targetOnlineY = AndroidUtilities.dp(55f) - AndroidUtilities.dp(195f); // 85dp от верха экрана - 195dp базовая позиция = -110dp
                             
-                        // Плавная интерполяция позиций
-                        float currentNameX = AndroidUtilities.lerp(0f, targetNameX, scrollUpProgress);
-                        float currentNameY = AndroidUtilities.lerp(0f, targetNameY, scrollUpProgress);
-                        float currentOnlineX = AndroidUtilities.lerp(0f, targetOnlineX, scrollUpProgress);
-                        float currentOnlineY = AndroidUtilities.lerp(0f, targetOnlineY, scrollUpProgress);
+                        // Плавная интерполяция позиций с единым прогрессом
+                        float currentNameX = AndroidUtilities.lerp(0f, targetNameX, unifiedScrollProgress);
+                        float currentNameY = AndroidUtilities.lerp(0f, targetNameY, unifiedScrollProgress);
+                        float currentOnlineX = AndroidUtilities.lerp(0f, targetOnlineX, unifiedScrollProgress);
+                        float currentOnlineY = AndroidUtilities.lerp(0f, targetOnlineY, unifiedScrollProgress);
                         
                         // Применяем плавные позиции напрямую
                         for (int a = 0; a < nameTextView.length; a++) {
                             if (nameTextView[a] != null) {
                                 nameTextView[a].setTranslationX(currentNameX);
                                 nameTextView[a].setTranslationY(currentNameY);
-                                nameTextView[a].setScaleX(nameScale * (1f - scrollUpProgress * 0.2f)); // Немного уменьшаем при скролле
-                                nameTextView[a].setScaleY(nameScale * (1f - scrollUpProgress * 0.2f));
+                                nameTextView[a].setScaleX(nameScale * (1f - unifiedScrollProgress * 0.2f)); // Немного уменьшаем при скролле
+                                nameTextView[a].setScaleY(nameScale * (1f - unifiedScrollProgress * 0.2f));
                             }
                             
                             if (a < onlineTextView.length && onlineTextView[a] != null) {
@@ -8465,7 +8482,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                         
                         if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("ProfileActivity: Scroll-up text animation - scrollUpProgress=" + scrollUpProgress + 
+                            FileLog.d("ProfileActivity: Unified scroll animation - unifiedScrollProgress=" + unifiedScrollProgress + 
                                     ", nameX=" + currentNameX + ", nameY=" + currentNameY + ", onlineX=" + currentOnlineX + ", onlineY=" + currentOnlineY);
                         }
                         
@@ -8516,6 +8533,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 mediaCounterTextView.setTranslationX(onlineX);
                                 mediaCounterTextView.setTranslationY(onlineY);
                             }
+                        }
+                        
+                        // Сбрасываем прогресс втягивания всех элементов в стандартном состоянии
+                        if (topView != null) {
+                            topView.setScrollUpProgress(0f);
+                        }
+                        if (giftsView != null) {
+                            giftsView.setScrollUpProgress(0f);
                         }
                     }
                     

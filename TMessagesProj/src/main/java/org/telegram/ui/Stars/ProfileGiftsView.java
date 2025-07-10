@@ -352,11 +352,19 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             final Gift gift = gifts.get(i);
             final float alpha = gift.animatedFloat.set(1.0f);
             
-            // СИНХРОНИЗАЦИЯ С АВАТАРКОЙ: подарки уменьшаются и "втягиваются" при скролле вверх
-            // scrollUpProgress = 0 -> стандартное поведение
-            // scrollUpProgress = 1 -> подарки полностью "втянуты" в аватарку и исчезли
+            // ВОЛНООБРАЗНОЕ ВТЯГИВАНИЕ: каждый подарок втягивается с индивидуальной задержкой
+            final float perItemDelay = 0.08f; // задержка между каждым подарком
+            final float maxDelay = (gifts.size() - 1) * perItemDelay; // максимальная задержка
+            
+            // Вычисляем локальный прогресс для текущего подарка
+            float localProgress = Math.max(0f, scrollUpProgress - i * perItemDelay);
+            if (maxDelay > 0) {
+                localProgress = Math.min(localProgress / (1.0f - maxDelay), 1.0f);
+            }
+            
+            // Базовое масштабирование с учетом локального прогресса
             final float baseScale = lerp(0.5f, 1.0f, alpha);
-            final float scrollScale = 1.0f - scrollUpProgress * 0.9f; // Уменьшаются на 90% при скролле
+            final float scrollScale = 1.0f - localProgress * 0.9f; // Каждый подарок уменьшается индивидуально
             final float finalScale = baseScale * scrollScale;
             
             // Вычисляем угол для равномерного распределения
@@ -381,22 +389,21 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             final float maxRadius = ar + dp(40);
             final float baseRadius = lerp(minRadius, maxRadius, 1.0f - absAngleSin);
             
-            // При скролле вверх радиус сильно уменьшается, подарки интенсивно "втягиваются" в аватарку
-            // Используем квадратичную функцию для более драматичного эффекта
-            final float intensiveScroll = scrollUpProgress * scrollUpProgress; // Квадратичное ускорение
-            final float scrollRadius = baseRadius * (1.0f - intensiveScroll * 0.95f); // Приближаются на 95% с ускорением
+            // Индивидуальное втягивание с квадратичным ускорением
+            final float intensiveScroll = localProgress * localProgress; // Квадратичное ускорение для каждого подарка
+            final float scrollRadius = baseRadius * (1.0f - intensiveScroll * 0.95f); // Приближение на 95%
             
             final float gx = (float) (acx + scrollRadius * Math.cos(angle));
             final float gy = (float) (acy + scrollRadius * Math.sin(angle));
             final float rotation = (float) (angle * 180.0f / Math.PI);
             
-            // Альфа-канал: учитываем скролл вверх для плавного исчезновения
+            // Индивидуальная альфа для каждого подарка
             float baseAlpha = alpha * (1.0f - expandProgress) * (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : (1.0f - actionBarProgress) * (closedAlpha));
-            // Подарки исчезают более плавно - только когда scrollUpProgress > 0.6 (в последние 40% анимации)
-            float scrollAlpha = scrollUpProgress < 0.6f ? 1.0f : 1.0f - (scrollUpProgress - 0.6f) / 0.4f;
+            // Каждый подарок исчезает индивидуально - только когда localProgress > 0.6 
+            float scrollAlpha = localProgress < 0.6f ? 1.0f : 1.0f - (localProgress - 0.6f) / 0.4f;
             float finalAlpha = baseAlpha * scrollAlpha;
             
-            // Градиент также исчезает синхронно с подарками
+            // Градиент также исчезает индивидуально
             float gradientAlpha = (i == 0 ? lerp(0.9f, 0.25f, actionBarProgress) : 1.0f) * scrollAlpha;
             
             gift.draw(

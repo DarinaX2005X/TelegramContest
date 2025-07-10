@@ -211,6 +211,11 @@ public class StarGiftPatterns {
 
     // Новая функция для рисования эффектов вокруг центрированного аватара
     public static void drawProfilePatternAroundAvatar(Canvas canvas, Drawable pattern, float avatarCenterX, float avatarCenterY, float avatarRadius, float alpha, float full) {
+        drawProfilePatternAroundAvatar(canvas, pattern, avatarCenterX, avatarCenterY, avatarRadius, alpha, full, 0.0f);
+    }
+
+    // Перегруженная версия с поддержкой анимации втягивания
+    public static void drawProfilePatternAroundAvatar(Canvas canvas, Drawable pattern, float avatarCenterX, float avatarCenterY, float avatarRadius, float alpha, float full, float scrollUpProgress) {
         if (alpha <= 0.0f) return;
 
         // Объединяем все эффекты в один массив и распределяем равномерно вокруг аватара
@@ -239,17 +244,25 @@ public class StarGiftPatterns {
 
         final int totalCount = full > 0 ? allPatterns.length : profileRight.length / 4;
         final float angleStep = (float) (2 * Math.PI / totalCount);
-        final float baseRadius = avatarRadius + dpf2(45); // базовое расстояние от аватара (увеличено с 20 до 45)
-        final float radiusVariation = dpf2(80); // максимальное дополнительное расстояние (увеличено с 60 до 80)
+        final float baseRadius = avatarRadius + dpf2(45); // базовое расстояние от аватара
+        final float radiusVariation = dpf2(80); // максимальное дополнительное расстояние
+
+        // ИНТЕНСИВНАЯ АНИМАЦИЯ ВТЯГИВАНИЯ: драматичное втягивание со всех сторон
+        final float intensiveProgress = scrollUpProgress * scrollUpProgress; // Квадратичное ускорение как у подарков
+        final float scrollScale = 1.0f - intensiveProgress * 0.95f; // Сильное уменьшение на 95%
+        final float scrollRadius = 1.0f - intensiveProgress * 0.98f; // Почти полное приближение к центру на 98%
+        final float scrollAlpha = scrollUpProgress < 0.6f ? 1.0f : 1.0f - (scrollUpProgress - 0.6f) / 0.4f; // Исчезают как подарки
 
         for (int i = 0; i < totalCount; ++i) {
             final float angle = angleStep * i;
-            final float size = allPatterns[i][2];
-            final float thisAlpha = allPatterns[i][3];
+            final float size = allPatterns[i][2] * scrollScale; // Масштабирование размера
+            final float thisAlpha = allPatterns[i][3] * scrollAlpha; // Применяем альфа втягивания
             
-            // Варьируем расстояние: случайное от baseRadius до baseRadius + radiusVariation
-            final float radius = baseRadius + radiusVariation * (float) Math.sin(angle * 3.7 + i * 1.3); // псевдослучайное расстояние
+            // Варьируем расстояние с учетом втягивания
+            final float originalRadius = baseRadius + radiusVariation * (float) Math.sin(angle * 3.7 + i * 1.3);
+            final float radius = originalRadius * scrollRadius; // Приближение к центру
             
+            // Простое магнитное втягивание без вращения
             final float x = avatarCenterX + radius * (float) Math.cos(angle);
             final float y = avatarCenterY + radius * (float) Math.sin(angle);
 
