@@ -1,5 +1,7 @@
 .idea/
 .gradle/
+.cursor/
+Android Contest 2025 R1/
 build/
 obj/
 *.iml
