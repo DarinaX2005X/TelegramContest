@@ -247,24 +247,39 @@ public class StarGiftPatterns {
         final float baseRadius = avatarRadius + dpf2(45); // базовое расстояние от аватара
         final float radiusVariation = dpf2(80); // максимальное дополнительное расстояние
 
-        // ИНТЕНСИВНАЯ АНИМАЦИЯ ВТЯГИВАНИЯ: драматичное втягивание со всех сторон
-        final float intensiveProgress = scrollUpProgress * scrollUpProgress; // Квадратичное ускорение как у подарков
-        final float scrollScale = 1.0f - intensiveProgress * 0.95f; // Сильное уменьшение на 95%
-        final float scrollRadius = 1.0f - intensiveProgress * 0.98f; // Почти полное приближение к центру на 98%
-        final float scrollAlpha = scrollUpProgress < 0.6f ? 1.0f : 1.0f - (scrollUpProgress - 0.6f) / 0.4f; // Исчезают как подарки
-
+        // ВТЯГИВАНИЕ КАК У ПОДАРКОВ: квадратичное ускорение с масштабированием и исчезновением
         for (int i = 0; i < totalCount; ++i) {
             final float angle = angleStep * i;
-            final float size = allPatterns[i][2] * scrollScale; // Масштабирование размера
-            final float thisAlpha = allPatterns[i][3] * scrollAlpha; // Применяем альфа втягивания
             
-            // Варьируем расстояние с учетом втягивания
+            // Индивидуальная задержка для каждого эффекта (как у подарков)
+            final float perItemDelay = 0.05f; // немного быстрее чем у подарков
+            float localProgress = Math.max(0f, scrollUpProgress - i * perItemDelay);
+            final float maxDelay = (totalCount - 1) * perItemDelay;
+            if (maxDelay > 0) {
+                localProgress = Math.min(localProgress / (1.0f - maxDelay), 1.0f);
+            }
+            
+            // Квадратичное ускорение для драматичного эффекта
+            final float intensiveProgress = localProgress * localProgress;
+            
+            // Масштабирование размера (как у подарков)
+            final float scrollScale = 1.0f - intensiveProgress * 0.9f; // Уменьшение на 90%
+            final float size = allPatterns[i][2] * scrollScale;
+            
+            // Увеличенная базовая прозрачность для лучшей видимости
+            final float baseAlpha = allPatterns[i][3] * 2.5f; // Увеличиваем базовую прозрачность в 2.5 раза
+            
+            // Исчезновение только в последней части анимации (как у подарков)
+            final float fadeAlpha = localProgress < 0.6f ? 1.0f : 1.0f - (localProgress - 0.6f) / 0.4f;
+            final float finalAlpha = Math.min(1.0f, baseAlpha) * fadeAlpha; // Ограничиваем максимум до 1.0
+            
+            // Втягивание к центру аватара (как у подарков)
             final float originalRadius = baseRadius + radiusVariation * (float) Math.sin(angle * 3.7 + i * 1.3);
-            final float radius = originalRadius * scrollRadius; // Приближение к центру
+            final float scrollRadius = originalRadius * (1.0f - intensiveProgress * 0.95f); // Приближение к центру на 95%
             
-            // Простое магнитное втягивание без вращения
-            final float x = avatarCenterX + radius * (float) Math.cos(angle);
-            final float y = avatarCenterY + radius * (float) Math.sin(angle);
+            // Позиция с втягиванием
+            final float x = avatarCenterX + scrollRadius * (float) Math.cos(angle);
+            final float y = avatarCenterY + scrollRadius * (float) Math.sin(angle);
 
             pattern.setBounds(
                 (int) (x - dpf2(size) / 2.0f),
@@ -272,7 +287,9 @@ public class StarGiftPatterns {
                 (int) (x + dpf2(size) / 2.0f),
                 (int) (y + dpf2(size) / 2.0f)
             );
-            pattern.setAlpha((int) (0xFF * alpha * thisAlpha * (full > 0 ? full : 1.0f)));
+            
+            // Применяем итоговую прозрачность без двойного умножения
+            pattern.setAlpha((int) (0xFF * alpha * finalAlpha * (full > 0 ? full : 1.0f)));
             pattern.draw(canvas);
         }
     }

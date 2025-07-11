@@ -498,6 +498,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float extraHeight;
     private float initialAnimationExtraHeight;
     private float avatarAnimationProgress;
+    private long lastFrameTime; // Для ограничения частоты кадров анимации
 
     private int searchTransitionOffset;
     private float searchTransitionProgress;
@@ -5263,7 +5264,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (Build.VERSION.SDK_INT >= 21) {
             actionsContainer.setElevation(AndroidUtilities.dp(8));
         }
-        avatarContainer2.addView(actionsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 16, 225, 16, 0));
+        // Используем динамическое позиционирование вместо фиксированного отступа
+        avatarContainer2.addView(actionsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 16, 0, 16, 0));
 
         // Динамическое определение кнопок в зависимости от типа профиля
         ProfileActionButton[] actionButtons = getProfileActionButtons();
@@ -5471,10 +5473,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         expandAnimator = ValueAnimator.ofFloat(0f, 1f);
         expandAnimator.addUpdateListener(anim -> {
+            // Ограничиваем частоту обновления для стабильности (60fps max)
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastFrameTime < 16) {
+                return;
+            }
+            lastFrameTime = currentTime;
             setAvatarExpandProgress(anim.getAnimatedFraction());
         });
-        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
-        expandAnimator.setDuration(400);
+        // Используем более плавный интерполятор Material Design
+        expandAnimator.setInterpolator(new CubicBezierInterpolator(0.25f, 0.1f, 0.25f, 1f));
+        expandAnimator.setDuration(500); // Замедляем для более плавной анимации
         expandAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
@@ -5944,22 +5953,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         updateEmojiStatusDrawableColor(value);
 
-        // Плавные переходы текста с квадратичными кривыми Безье как в стабильной версии
-        final float k = AndroidUtilities.dpf2(8f);
-
+        // Стабильное позиционирование текста с учетом блока кнопок внизу
+        // Верхний блок содержит: аватар, тексты, тень и кнопки
+        final float textBlockHeight = extraHeight + newTop; // Точная высота верхнего блока
+        
+        // Учитываем высоту блока кнопок и отступов при позиционировании текста
+        final int buttonBlockHeight = AndroidUtilities.dp(56); // Высота блока кнопок
+        final int buttonMargins = AndroidUtilities.dp(32); // Отступы для кнопок (16dp сверху + 16dp снизу)
+        final float textAreaHeight = textBlockHeight - buttonBlockHeight - buttonMargins; // Доступная область для текста
+        
+        // Стабильные позиции для текста - в области над кнопками
         final float nameTextViewXEnd = AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft();
-        final float nameTextViewYEnd = newTop + extraHeight - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom();
-        final float nameTextViewCx = k + nameX + (nameTextViewXEnd - nameX) / 2f;
-        final float nameTextViewCy = k + nameY + (nameTextViewYEnd - nameY) / 2f;
-        final float nameTextViewX = (1 - value) * (1 - value) * nameX + 2 * (1 - value) * value * nameTextViewCx + value * value * nameTextViewXEnd;
-        final float nameTextViewY = (1 - value) * (1 - value) * nameY + 2 * (1 - value) * value * nameTextViewCy + value * value * nameTextViewYEnd;
+        final float nameTextViewYEnd = textAreaHeight - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom();
+        final float nameTextViewX = AndroidUtilities.lerp(nameX, nameTextViewXEnd, value);
+        final float nameTextViewY = AndroidUtilities.lerp(nameY, nameTextViewYEnd, value);
 
         final float onlineTextViewXEnd = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
-        final float onlineTextViewYEnd = newTop + extraHeight - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom();
-        final float onlineTextViewCx = k + onlineX + (onlineTextViewXEnd - onlineX) / 2f;
-        final float onlineTextViewCy = k + onlineY + (onlineTextViewYEnd - onlineY) / 2f;
-        final float onlineTextViewX = (1 - value) * (1 - value) * onlineX + 2 * (1 - value) * value * onlineTextViewCx + value * value * onlineTextViewXEnd;
-        final float onlineTextViewY = (1 - value) * (1 - value) * onlineY + 2 * (1 - value) * value * onlineTextViewCy + value * value * onlineTextViewYEnd;
+        final float onlineTextViewYEnd = textAreaHeight - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom();
+        final float onlineTextViewX = AndroidUtilities.lerp(onlineX, onlineTextViewXEnd, value);
+        final float onlineTextViewY = AndroidUtilities.lerp(onlineY, onlineTextViewYEnd, value);
 
         nameTextView[1].setTranslationX(nameTextViewX);
         nameTextView[1].setTranslationY(nameTextViewY);
@@ -5979,8 +5991,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         onlineTextView[1].setTextColor(ColorUtils.blendARGB(applyPeerColor(statusColor, true, online), 0xB3FFFFFF, value));
         if (extraHeight > AndroidUtilities.dp(88f)) {
             nameTextView[1].setPivotY(AndroidUtilities.lerp(0, nameTextView[1].getMeasuredHeight(), value));
-            nameTextView[1].setScaleX(AndroidUtilities.lerp(1.12f, 1.67f, value));
-            nameTextView[1].setScaleY(AndroidUtilities.lerp(1.12f, 1.67f, value));
+            // Более умеренное увеличение текста - максимум 35% вместо 67%
+            nameTextView[1].setScaleX(AndroidUtilities.lerp(1.12f, 1.35f, value));
+            nameTextView[1].setScaleY(AndroidUtilities.lerp(1.12f, 1.35f, value));
         }
         if (showStatusButton != null) {
             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f), 0x23ffffff, currentExpandAnimatorValue));
@@ -5994,26 +6007,36 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         avatarImage.setForegroundAlpha(value);
         
-        // Глассморфный блок с плавной анимацией
+        // Блок с тенью - стабильная привязка к нижней границе верхнего блока
         if (expandedTextBackgroundView != null) {
-            // Плавное появление/исчезновение блока в зависимости от value
-            float blockAlpha = Math.max(0f, Math.min(1f, (value - 0.2f) * 2f)); // Начинает появляться с value=0.2
+            // Плавное появление блока в развернутом состоянии
+            float blockAlpha = Math.max(0f, Math.min(1f, (value - 0.4f) * 3f)); // Появляется еще позже для большей стабильности
             expandedTextBackgroundView.setAlpha(blockAlpha);
             expandedTextBackgroundView.setVisibility(blockAlpha > 0 ? View.VISIBLE : View.GONE);
             
             if (blockAlpha > 0) {
-                // Позиционирование блока с плавным изменением размера
+                // Блок всегда занимает нижнюю часть верхнего блока профиля
                 FrameLayout.LayoutParams backgroundParams = (FrameLayout.LayoutParams) expandedTextBackgroundView.getLayoutParams();
-                int blockHeight = (int) AndroidUtilities.lerp(AndroidUtilities.dp(100f), AndroidUtilities.dp(240f), value);
                 
-                // Блок плавно растет до низа верхнего блока
-                backgroundParams.topMargin = (int) (extraHeight + newTop - blockHeight);
-                backgroundParams.height = blockHeight;
+                // Высота блока тени - 160dp для оптимального эффекта
+                int shadowBlockHeight = AndroidUtilities.dp(160);
+                
+                // Блок тени привязан к низу верхнего блока как фон за кнопками и текстом
+                final float upperBlockHeight = extraHeight + newTop;
+                
+                // Блок тени точно привязан к низу верхнего блока профиля
+                backgroundParams.topMargin = Math.max(0, (int) (upperBlockHeight - shadowBlockHeight));
+                backgroundParams.height = shadowBlockHeight;
                 backgroundParams.width = FrameLayout.LayoutParams.MATCH_PARENT;
                 backgroundParams.leftMargin = 0;
                 backgroundParams.rightMargin = 0;
                 
                 expandedTextBackgroundView.requestLayout();
+                
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.d("ProfileActivity: Shadow block - upperBlockHeight=" + upperBlockHeight + 
+                             ", shadowTop=" + backgroundParams.topMargin + ", shadowHeight=" + shadowBlockHeight + ", value=" + value);
+                }
             }
         }
 
@@ -6023,26 +6046,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         params.leftMargin = (int) AndroidUtilities.lerp(0f, 0f, value); // Всегда центрированная аватарка
         avatarContainer.requestLayout();
         
-        // Плавная анимация кнопок
+        // Синхронизация кнопок с нижней границей верхнего блока профиля
         if (actionsContainer != null) {
             FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
             
-            // Позиции кнопок: стандартная vs развёрнутая
-            int standardButtonsY = AndroidUtilities.dp(225);
-            int expandedButtonsY = (int) (extraHeight + newTop - AndroidUtilities.dp(60f));
+            // Вычисляем позицию кнопок от нижней границы верхнего блока
+            float topBlockHeight = extraHeight + newTop; // Полная высота верхнего блока
+            int buttonsHeight = AndroidUtilities.dp(56); // Высота блока кнопок
+            int buttonsBottomMargin = AndroidUtilities.dp(16); // Отступ от кнопок до нижней границы
             
-            // Плавная интерполяция позиций кнопок
-            int currentButtonsY = (int) AndroidUtilities.lerp(standardButtonsY, expandedButtonsY, value);
-            actionParams.topMargin = currentButtonsY;
+            // Кнопки всегда позиционируются в нижней части верхнего блока
+            int buttonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
             
-            // Плавная анимация прозрачности кнопок
-            float buttonsAlpha = AndroidUtilities.lerp(0.8f, 1f, value); // Слегка выделяем в развёрнутом состоянии
-            actionsContainer.setAlpha(buttonsAlpha);
+            // Минимальная позиция кнопок (чтобы не заходили под аватар)
+            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
             
+            actionParams.topMargin = Math.max(buttonsY, minButtonsY);
             actionsContainer.requestLayout();
             
             if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Smooth buttons animation - value=" + value + ", topMargin=" + currentButtonsY + ", alpha=" + buttonsAlpha);
+                FileLog.d("ProfileActivity: Buttons synced with block boundary - topBlockHeight=" + topBlockHeight + 
+                         ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
             }
         }
 
@@ -8065,7 +8089,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (animated) {
                             writeButtonAnimation = new AnimatorSet();
                             if (writeButtonVisible) {
-                                writeButtonAnimation.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+                                writeButtonAnimation.setInterpolator(new CubicBezierInterpolator(0.25f, 0.1f, 0.25f, 1f));
                                 writeButtonAnimation.playTogether(
                                         ObjectAnimator.ofFloat(writeButton, View.SCALE_X, 1.0f),
                                         ObjectAnimator.ofFloat(writeButton, View.SCALE_Y, 1.0f),
@@ -8162,11 +8186,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         expandAnimatorValues[0] = value;
                         expandAnimatorValues[1] = 1f;
                         if (storyView != null && !storyView.isEmpty()) {
-                            expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
-                            expandAnimator.setDuration((long) ((1f - value) * 1.4f * 300f / durationFactor));
+                                        expandAnimator.setInterpolator(new CubicBezierInterpolator(0.25f, 0.1f, 0.25f, 1f));
+                         expandAnimator.setDuration((long) ((1f - value) * 600f / durationFactor)); // Замедляем расширение
                         } else {
-                            expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
-                            expandAnimator.setDuration((long) ((1f - value) * 300f / durationFactor));
+                            expandAnimator.setInterpolator(new CubicBezierInterpolator(0.25f, 0.1f, 0.25f, 1f));
+                            expandAnimator.setDuration((long) ((1f - value) * 600f / durationFactor)); // Замедляем расширение
                         }
                         expandAnimator.addListener(new AnimatorListenerAdapter() {
                             @Override
@@ -8235,9 +8259,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         float value = AndroidUtilities.lerp(expandAnimatorValues, currentExpanAnimatorFracture);
                         expandAnimatorValues[0] = value;
                         expandAnimatorValues[1] = 0f;
-                        expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_IN);
+                        expandAnimator.setInterpolator(new CubicBezierInterpolator(0.4f, 0.0f, 0.6f, 1f)); // Более мягкий easeInOut для плавного сжатия
                         if (!isInLandscapeMode) {
-                            expandAnimator.setDuration((long) (value * 300f / durationFactor));
+                            expandAnimator.setDuration((long) (value * 500f / durationFactor)); // Замедляем сжатие для плавности
                         } else {
                             expandAnimator.setDuration(0);
                         }
@@ -8351,99 +8375,90 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                 updateCollectibleHint();
             } else if (extraHeight <= AndroidUtilities.dp(330f)) {
-                // ЕДИНЫЙ ПРОГРЕСС ДЛЯ ВСЕХ АНИМАЦИЙ: начинаем все элементы одновременно
-                // Используем порог 200dp - анимация начинается только при реальном скролле вверх от стандартного состояния
-                float unifiedScrollThreshold = AndroidUtilities.dp(200f);
-                float unifiedScrollProgress = 0f;
-                if (extraHeight < unifiedScrollThreshold) {
-                    unifiedScrollProgress = Math.max(0f, Math.min(1f, (unifiedScrollThreshold - extraHeight) / unifiedScrollThreshold));
-                }
+                // Упрощенный прогресс анимации скролла для лучшей производительности
+                float scrollThreshold = AndroidUtilities.dp(200f);
+                float scrollProgress = extraHeight < scrollThreshold ? 
+                    Math.max(0f, Math.min(1f, (scrollThreshold - extraHeight) / scrollThreshold)) : 0f;
                 
                 avatarScale = (80 + 18 * diff) / 80.0f;
                 if (storyView != null) {
                     storyView.invalidate();
                 }
-                // Все элементы получают ОДИНАКОВЫЙ прогресс для плавной синхронной анимации
+                // Синхронное обновление всех элементов с упрощенным прогрессом
                 if (giftsView != null) {
-                    giftsView.setScrollUpProgress(unifiedScrollProgress);
-                    giftsView.invalidate();
+                    giftsView.setScrollUpProgress(scrollProgress);
                 }
                 if (topView != null) {
-                    topView.setScrollUpProgress(unifiedScrollProgress);
+                    topView.setScrollUpProgress(scrollProgress);
                 }
                 float nameScale = 1.0f + 0.12f * diff;
                 
                 if (expandAnimator == null || !expandAnimator.isRunning()) {
-                    if (unifiedScrollProgress > 0f) {
+                    if (scrollProgress > 0f) {
                         // UNIFIED SCROLL СОСТОЯНИЕ: все элементы анимируются синхронно
                         
-                        // АВАТАРКА: плавное движение вверх и уменьшение при скролле
-                        float avatarTranslationY = -unifiedScrollProgress * AndroidUtilities.dp(150f); // Поднимается на 150dp вверх
-                        float avatarFinalScale = avatarScale * (1f - unifiedScrollProgress * 0.6f); // Уменьшается на 60%
+                        // АВАТАРКА: замедленная анимация (в 2.5 раза медленнее остальных элементов)
+                        float avatarScrollProgress = (float) Math.pow(scrollProgress, 2.5); // Квадратичное замедление
+                        float avatarTranslationY = -avatarScrollProgress * AndroidUtilities.dp(150f); // Поднимается на 150dp вверх медленнее
+                        float avatarFinalScale = avatarScale * (1f - avatarScrollProgress * 0.6f); // Уменьшается на 60% медленнее
                         
                         avatarContainer.setScaleX(avatarFinalScale);
                         avatarContainer.setScaleY(avatarFinalScale);
                         avatarContainer.setTranslationX(0); // Остаётся по центру горизонтально
                         avatarContainer.setTranslationY(avatarTranslationY);
                         
-                        // КНОПКИ: правильная анимация с привязкой к нижней границе блока
+                        // КНОПКИ: плавная анимация с синхронизацией к границе блока
                         if (actionsContainer != null) {
                             FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
                             
-                            // Константы
-                            final int BUTTON_HEIGHT = AndroidUtilities.dp(56);
-                            final int STANDARD_BUTTONS_Y = AndroidUtilities.dp(225); // Стандартная позиция кнопок
-                            final int STANDARD_EXTRA_HEIGHT = AndroidUtilities.dp(330); // Стандартная высота блока
-                            final int COMPRESSION_START_Y = AndroidUtilities.dp(100); // Где начинается сжатие
+                            // Используем ту же логику что и в развернутом состоянии для плавности
+                            float topBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+                            int buttonsHeight = AndroidUtilities.dp(56);
+                            int buttonsBottomMargin = AndroidUtilities.dp(16);
                             
-                            // Простая логика: кнопки двигаются пропорционально изменению extraHeight
-                            // Стандартное соотношение: при extraHeight=330dp кнопки на 225dp
-                            // Расчет: кнопки должны быть на (225 * extraHeight / 330)
-                            int targetButtonsY = (int) (STANDARD_BUTTONS_Y * extraHeight / STANDARD_EXTRA_HEIGHT);
+                            // Вычисляем позицию кнопок от нижней границы блока
+                            int targetButtonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
+                            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
                             
-                            // Ограничиваем чтобы кнопки не поднимались выше точки сжатия
-                            if (targetButtonsY > COMPRESSION_START_Y) {
-                                // ФАЗА 1: Обычное движение - кнопки поднимаются пропорционально
-                                actionParams.topMargin = targetButtonsY;
-                                actionsContainer.requestLayout();
-                                
-                                // Кнопки остаются в полном размере
+                            // Плавное движение кнопок без резких скачков
+                            actionParams.topMargin = Math.max(targetButtonsY, minButtonsY);
+                            actionsContainer.requestLayout();
+                            
+                            // Определяем когда начинать сжатие кнопок (когда они достигают минимальной позиции)
+                            if (targetButtonsY >= minButtonsY) {
+                                // ФАЗА 1: Нормальное состояние - кнопки движутся плавно
                                 actionsContainer.setScaleX(1f);
                                 actionsContainer.setScaleY(1f);
                                 actionsContainer.setPivotY(0);
                                 actionsContainer.setAlpha(1f);
                                 
                                 if (BuildVars.LOGS_ENABLED) {
-                                    FileLog.d("ProfileActivity: Button movement - targetY=" + targetButtonsY + 
-                                            ", extraHeight=" + extraHeight + ", ratio=" + (extraHeight / STANDARD_EXTRA_HEIGHT));
+                                    FileLog.d("ProfileActivity: Smooth button movement - topBlockHeight=" + topBlockHeight + 
+                                            ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
                                 }
                             } else {
                                 // ФАЗА 2: Сжатие - кнопки достигли критической точки
-                                actionParams.topMargin = COMPRESSION_START_Y;
-                                actionsContainer.requestLayout();
-                                
-                                // Расчет прогресса сжатия: сколько extraHeight меньше чем нужно для COMPRESSION_START_Y
-                                float compressionThreshold = COMPRESSION_START_Y * STANDARD_EXTRA_HEIGHT / STANDARD_BUTTONS_Y;
-                                float compressionRange = compressionThreshold; // От compressionThreshold до 0
+                                // Вычисляем прогресс сжатия на основе того, насколько targetButtonsY меньше minButtonsY
+                                float compressionRange = AndroidUtilities.dp(80); // Диапазон для сжатия 80dp
                                 float compressionProgress = Math.max(0f, Math.min(1f, 
-                                    (compressionThreshold - extraHeight) / compressionRange));
+                                    (minButtonsY - targetButtonsY) / compressionRange));
                                 
-                                // Вертикальное сжатие
-                                float verticalScale = 1f - compressionProgress * 0.95f; // Сжимаем до 5%
+                                // Плавное вертикальное сжатие
+                                float verticalScale = Math.max(0.1f, 1f - compressionProgress * 0.9f); // Сжимаем до 10%
                                 actionsContainer.setScaleY(verticalScale);
                                 actionsContainer.setPivotY(0); // Сжатие сверху
                                 actionsContainer.setScaleX(1f); // Горизонтально не меняем
                                 
-                                // Альфа уменьшается в последние 60% сжатия
-                                float alphaStart = 0.4f;
-                                float buttonAlpha = compressionProgress < alphaStart ? 1f : 
-                                    1f - (compressionProgress - alphaStart) / (1f - alphaStart);
+                                // Плавное исчезновение в последней трети сжатия
+                                float alphaThreshold = 0.7f;
+                                float buttonAlpha = compressionProgress < alphaThreshold ? 1f : 
+                                    Math.max(0f, 1f - (compressionProgress - alphaThreshold) / (1f - alphaThreshold));
                                 actionsContainer.setAlpha(buttonAlpha);
                                 
                                 if (BuildVars.LOGS_ENABLED) {
-                                    FileLog.d("ProfileActivity: Button compression - progress=" + compressionProgress + 
+                                    FileLog.d("ProfileActivity: Smooth button compression - progress=" + compressionProgress + 
                                             ", scaleY=" + verticalScale + ", alpha=" + buttonAlpha + 
-                                            ", threshold=" + compressionThreshold);
+                                            ", targetY=" + targetButtonsY + ", minY=" + minButtonsY);
                                 }
                             }
                         }
@@ -8455,19 +8470,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         float targetOnlineX = AndroidUtilities.dp(56f) - (onlineTextView[1] != null ? onlineTextView[1].getLeft() : 0);
                         float targetOnlineY = AndroidUtilities.dp(55f) - AndroidUtilities.dp(195f); // 85dp от верха экрана - 195dp базовая позиция = -110dp
                             
-                        // Плавная интерполяция позиций с единым прогрессом
-                        float currentNameX = AndroidUtilities.lerp(0f, targetNameX, unifiedScrollProgress);
-                        float currentNameY = AndroidUtilities.lerp(0f, targetNameY, unifiedScrollProgress);
-                        float currentOnlineX = AndroidUtilities.lerp(0f, targetOnlineX, unifiedScrollProgress);
-                        float currentOnlineY = AndroidUtilities.lerp(0f, targetOnlineY, unifiedScrollProgress);
+                        // Плавная интерполяция позиций с упрощенным прогрессом
+                        float currentNameX = AndroidUtilities.lerp(0f, targetNameX, scrollProgress);
+                        float currentNameY = AndroidUtilities.lerp(0f, targetNameY, scrollProgress);
+                        float currentOnlineX = AndroidUtilities.lerp(0f, targetOnlineX, scrollProgress);
+                        float currentOnlineY = AndroidUtilities.lerp(0f, targetOnlineY, scrollProgress);
                         
                         // Применяем плавные позиции напрямую
                         for (int a = 0; a < nameTextView.length; a++) {
                             if (nameTextView[a] != null) {
                                 nameTextView[a].setTranslationX(currentNameX);
                                 nameTextView[a].setTranslationY(currentNameY);
-                                nameTextView[a].setScaleX(nameScale * (1f - unifiedScrollProgress * 0.2f)); // Немного уменьшаем при скролле
-                                nameTextView[a].setScaleY(nameScale * (1f - unifiedScrollProgress * 0.2f));
+                                nameTextView[a].setScaleX(nameScale * (1f - scrollProgress * 0.2f)); // Немного уменьшаем при скролле
+                                nameTextView[a].setScaleY(nameScale * (1f - scrollProgress * 0.2f));
                             }
                             
                             if (a < onlineTextView.length && onlineTextView[a] != null) {
@@ -8482,7 +8497,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                         
                         if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("ProfileActivity: Unified scroll animation - unifiedScrollProgress=" + unifiedScrollProgress + 
+                            FileLog.d("ProfileActivity: Scroll animation - scrollProgress=" + scrollProgress + 
                                     ", nameX=" + currentNameX + ", nameY=" + currentNameY + ", onlineX=" + currentOnlineX + ", onlineY=" + currentOnlineY);
                         }
                         
@@ -8503,15 +8518,34 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         avatarParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
                         avatarContainer.requestLayout();
                         
-                        // Стандартное позиционирование кнопок
+                        // Единая логика позиционирования кнопок для плавности переходов
                         if (actionsContainer != null) {
                             FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
-                            actionParams.topMargin = AndroidUtilities.dp(225);
+                            
+                            // Используем ту же логику что и при скролле для полной синхронизации
+                            float topBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+                            int buttonsHeight = AndroidUtilities.dp(56);
+                            int buttonsBottomMargin = AndroidUtilities.dp(16);
+                            
+                            // Кнопки всегда позиционируются от нижней границы верхнего блока
+                            int targetButtonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
+                            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
+                            
+                            // Плавное позиционирование без резких переходов
+                            actionParams.topMargin = Math.max(targetButtonsY, minButtonsY);
                             actionsContainer.requestLayout();
                             
+                            // В стандартном состоянии кнопки всегда в полном размере
                             actionsContainer.setScaleX(1f);
                             actionsContainer.setScaleY(1f);
+                            actionsContainer.setPivotY(0);
                             actionsContainer.setAlpha(1f);
+                            
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("ProfileActivity: Standard buttons sync - topBlockHeight=" + topBlockHeight + 
+                                         ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight + 
+                                         ", targetY=" + targetButtonsY + ", minY=" + minButtonsY);
+                            }
                         }
                         
                         // Стандартное позиционирование имени и статуса
@@ -8593,21 +8627,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
 
 
-        // Обновляем полупрозрачный блок в зависимости от состояния
-        if (expandedTextBackgroundView != null) {
-            if (isPulledDown) {
-                expandedTextBackgroundView.setAlpha(1f);
-                if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("ProfileActivity: isPulledDown=true, extraHeight=" + extraHeight + ", background alpha=1f");
-                }
-            } else {
-                expandedTextBackgroundView.setAlpha(0f);
-                if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("ProfileActivity: isPulledDown=false, extraHeight=" + extraHeight + ", background alpha=0f, nameX=" + nameX + ", nameY=" + nameY);
-                }
-            }
-            expandedTextBackgroundView.invalidate();
-        }
+        // Блок с тенью теперь управляется в setAvatarExpandProgress для плавной анимации
+        // Конфликтующая логика удалена для корректной работы анимаций
 
         updateEmojiStatusEffectPosition();
     }
@@ -8630,14 +8651,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     qrItem.setVisibility(View.VISIBLE);
                 }
                 if (setQrVisible) {
-                    qrItemAnimation.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+                    qrItemAnimation.setInterpolator(new CubicBezierInterpolator(0.25f, 0.1f, 0.25f, 1f));
                     qrItemAnimation.playTogether(
                             ObjectAnimator.ofFloat(qrItem, View.ALPHA, 1.0f),
                             ObjectAnimator.ofFloat(qrItem, View.SCALE_Y, 1f),
                             ObjectAnimator.ofFloat(avatarsViewPagerIndicatorView, View.TRANSLATION_X, -AndroidUtilities.dp(48))
                     );
                 } else {
-                    qrItemAnimation.setInterpolator(CubicBezierInterpolator.EASE_IN);
+                    qrItemAnimation.setInterpolator(new CubicBezierInterpolator(0.55f, 0.055f, 0.675f, 0.19f));
                     qrItemAnimation.playTogether(
                             ObjectAnimator.ofFloat(qrItem, View.ALPHA, 0.0f),
                             ObjectAnimator.ofFloat(qrItem, View.SCALE_Y, 0f),
