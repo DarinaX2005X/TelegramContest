@@ -1,40 +1,21 @@
 {
   "project_info": {
-    "project_number": "635179563280",
-    "project_id": "telegramcontest-e7d20",
-    "storage_bucket": "telegramcontest-e7d20.firebasestorage.app"
+    "project_number": "305132116392",
+    "project_id": "telegrampkgid",
+    "storage_bucket": "telegrampkgid.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:635179563280:android:0ba5ee14b5a02395f90d95",
+        "mobilesdk_app_id": "1:305132116392:android:a7275ade4c89bef71e259d",
         "android_client_info": {
-          "package_name": "org.telegram.messenger"
+          "package_name": "com.darina.telegramcontest"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyB46tzRgY4UI6AjPWgqyZRSS3sdMVt025c"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:635179563280:android:a48b6acb45d2adabf90d95",
-        "android_client_info": {
-          "package_name": "org.telegram.messenger.beta"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyB46tzRgY4UI6AjPWgqyZRSS3sdMVt025c"
+          "current_key": "AIzaSyA6hkcGtmagroR_5lEjU_6Y_55vbxlu1Co"
         }
       ],
       "services": {

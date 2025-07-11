@@ -4877,10 +4877,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         avatarContainer2 = new FrameLayout(context) {
 
             CanvasButton canvasButton;
-
+            
             @Override
             protected void dispatchDraw(Canvas canvas) {
-                super.dispatchDraw(canvas);
+                // Добавляем маску для аватара чтобы он не выходил за границы верхнего блока
+                if (extraHeight > 0) {
+                    int saveCount = canvas.save();
+                    // Ограничиваем рисование верхним блоком
+                    float topBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+                    canvas.clipRect(0, 0, getMeasuredWidth(), topBlockHeight);
+                    super.dispatchDraw(canvas);
+                    canvas.restoreToCount(saveCount);
+                } else {
+                    super.dispatchDraw(canvas);
+                }
                 if (transitionOnlineText != null) {
                     canvas.save();
                     canvas.translate(onlineTextView[0].getX(), onlineTextView[0].getY());
@@ -5962,13 +5972,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         final int buttonMargins = AndroidUtilities.dp(32); // Отступы для кнопок (16dp сверху + 16dp снизу)
         final float textAreaHeight = textBlockHeight - buttonBlockHeight - buttonMargins; // Доступная область для текста
         
-        // Стабильные позиции для текста - в области над кнопками
-        final float nameTextViewXEnd = AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft();
+        // Стабильные позиции для текста - учитываем текущее состояние профиля
+        // В развернутом состоянии тексты уже сбоку, поэтому меньше движения
+        final float nameTextViewXEnd = nameX != 0 ? nameX : AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft();
         final float nameTextViewYEnd = textAreaHeight - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom();
         final float nameTextViewX = AndroidUtilities.lerp(nameX, nameTextViewXEnd, value);
         final float nameTextViewY = AndroidUtilities.lerp(nameY, nameTextViewYEnd, value);
 
-        final float onlineTextViewXEnd = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
+        final float onlineTextViewXEnd = onlineX != 0 ? onlineX : AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
         final float onlineTextViewYEnd = textAreaHeight - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom();
         final float onlineTextViewX = AndroidUtilities.lerp(onlineX, onlineTextViewXEnd, value);
         final float onlineTextViewY = AndroidUtilities.lerp(onlineY, onlineTextViewYEnd, value);
@@ -6055,18 +6066,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             int buttonsHeight = AndroidUtilities.dp(56); // Высота блока кнопок
             int buttonsBottomMargin = AndroidUtilities.dp(16); // Отступ от кнопок до нижней границы
             
-            // Кнопки всегда позиционируются в нижней части верхнего блока
-            int buttonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
+            // Привязываем НИЗ кнопок к границе верхнего блока
+            int desiredBottomY = (int) (topBlockHeight - buttonsBottomMargin);
+            int buttonsTopY = desiredBottomY - buttonsHeight;
+            int minButtonsY = AndroidUtilities.dp(150); // Ниже граница сжатия
             
-            // Минимальная позиция кнопок (чтобы не заходили под аватар)
-            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
+            actionParams.topMargin = Math.max(buttonsTopY, minButtonsY);
             
-            actionParams.topMargin = Math.max(buttonsY, minButtonsY);
+            // Сбрасываем масштаб в развернутом состоянии
+            actionsContainer.setScaleX(1f);
+            actionsContainer.setScaleY(1f);
+            actionsContainer.setPivotY(0);
+            actionsContainer.setAlpha(1f);
             actionsContainer.requestLayout();
             
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("ProfileActivity: Buttons synced with block boundary - topBlockHeight=" + topBlockHeight + 
-                         ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
+                         ", desiredBottomY=" + desiredBottomY + ", buttonsTopY=" + buttonsTopY + 
+                         ", finalTopMargin=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
             }
         }
 
@@ -8219,17 +8236,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (openAnimationInProgress && playProfileAnimation == 2) {
                             additionalTranslationY = -(1.0f - avatarAnimationProgress) * AndroidUtilities.dp(50);
                         }
-                        // В развернутом состоянии используем специфические вычисления позиций
-                        onlineX = AndroidUtilities.dpf2(16f) - onlineTextView[1].getLeft();
-                        // Позиционируем имя и статус над кнопками с отступом
-                        float buttonContainerHeight = AndroidUtilities.dpf2(56f); // Высота контейнера кнопок
-                        float textSpacing = AndroidUtilities.dpf2(16f); // Отступ от кнопок
-                        nameTextView[1].setTranslationX(AndroidUtilities.dpf2(18f) - nameTextView[1].getLeft());
-                        nameTextView[1].setTranslationY(newTop + h - buttonContainerHeight - textSpacing - AndroidUtilities.dpf2(38f) - nameTextView[1].getBottom() + additionalTranslationY);
+                        // Используем унифицированную логику позиционирования через refreshNameAndOnlineXY()
+                        refreshNameAndOnlineXY();
+                        nameTextView[1].setTranslationX(nameX);
+                        nameTextView[1].setTranslationY(nameY + additionalTranslationY);
                         onlineTextView[1].setTranslationX(onlineX + customPhotoOffset);
-                        onlineTextView[1].setTranslationY(newTop + h - buttonContainerHeight - textSpacing - AndroidUtilities.dpf2(18f) - onlineTextView[1].getBottom() + additionalTranslationY);
-                        mediaCounterTextView.setTranslationX(onlineTextView[1].getTranslationX());
-                        mediaCounterTextView.setTranslationY(onlineTextView[1].getTranslationY());
+                        onlineTextView[1].setTranslationY(onlineY + additionalTranslationY);
+                        mediaCounterTextView.setTranslationX(onlineX);
+                        mediaCounterTextView.setTranslationY(onlineY + additionalTranslationY);
                         updateCollectibleHint();
                     }
                 } else {
@@ -8416,16 +8430,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             int buttonsHeight = AndroidUtilities.dp(56);
                             int buttonsBottomMargin = AndroidUtilities.dp(16);
                             
-                            // Вычисляем позицию кнопок от нижней границы блока
-                            int targetButtonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
-                            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
+                            // Привязываем НИЗ кнопок к границе блока
+                            int desiredBottomY = (int) (topBlockHeight - buttonsBottomMargin);
+                            int buttonsTopY = desiredBottomY - buttonsHeight;
+                            int minButtonsY = AndroidUtilities.dp(150); // Ниже граница сжатия
                             
                             // Плавное движение кнопок без резких скачков
-                            actionParams.topMargin = Math.max(targetButtonsY, minButtonsY);
+                            actionParams.topMargin = Math.max(buttonsTopY, minButtonsY);
                             actionsContainer.requestLayout();
                             
                             // Определяем когда начинать сжатие кнопок (когда они достигают минимальной позиции)
-                            if (targetButtonsY >= minButtonsY) {
+                            if (buttonsTopY >= minButtonsY) {
                                 // ФАЗА 1: Нормальное состояние - кнопки движутся плавно
                                 actionsContainer.setScaleX(1f);
                                 actionsContainer.setScaleY(1f);
@@ -8434,20 +8449,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 
                                 if (BuildVars.LOGS_ENABLED) {
                                     FileLog.d("ProfileActivity: Smooth button movement - topBlockHeight=" + topBlockHeight + 
-                                            ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
+                                            ", desiredBottomY=" + desiredBottomY + ", buttonsTopY=" + buttonsTopY + 
+                                            ", finalTopMargin=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
                                 }
                             } else {
                                 // ФАЗА 2: Сжатие - кнопки достигли критической точки
-                                // Вычисляем прогресс сжатия на основе того, насколько targetButtonsY меньше minButtonsY
+                                // Вычисляем прогресс сжатия на основе того, насколько buttonsTopY меньше minButtonsY
                                 float compressionRange = AndroidUtilities.dp(80); // Диапазон для сжатия 80dp
                                 float compressionProgress = Math.max(0f, Math.min(1f, 
-                                    (minButtonsY - targetButtonsY) / compressionRange));
+                                    (minButtonsY - buttonsTopY) / compressionRange));
                                 
-                                // Плавное вертикальное сжатие
+                                // Сжатие с подъемом кнопок вверх
                                 float verticalScale = Math.max(0.1f, 1f - compressionProgress * 0.9f); // Сжимаем до 10%
+                                
+                                // Кнопки поднимаются вверх при сжатии
+                                int upwardMovement = (int) (compressionProgress * AndroidUtilities.dp(30f)); // Поднимаются на 30dp медленнее
+                                actionParams.topMargin = minButtonsY - upwardMovement;
                                 actionsContainer.setScaleY(verticalScale);
-                                actionsContainer.setPivotY(0); // Сжатие сверху
+                                actionsContainer.setPivotY(0.5f);
                                 actionsContainer.setScaleX(1f); // Горизонтально не меняем
+                                actionsContainer.requestLayout();
                                 
                                 // Плавное исчезновение в последней трети сжатия
                                 float alphaThreshold = 0.7f;
@@ -8456,19 +8477,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 actionsContainer.setAlpha(buttonAlpha);
                                 
                                 if (BuildVars.LOGS_ENABLED) {
-                                    FileLog.d("ProfileActivity: Smooth button compression - progress=" + compressionProgress + 
-                                            ", scaleY=" + verticalScale + ", alpha=" + buttonAlpha + 
-                                            ", targetY=" + targetButtonsY + ", minY=" + minButtonsY);
+                                    FileLog.d("ProfileActivity: Upward compression - progress=" + compressionProgress + 
+                                            ", scaleY=" + verticalScale + ", upwardMovement=" + upwardMovement + 
+                                            ", finalTopMargin=" + actionParams.topMargin + ", alpha=" + buttonAlpha);
                                 }
                             }
                         }
                         
-                        // ИМЯ И СТАТУС: плавное перемещение в левый верхний угол при скролле
-                        // Вычисляем translation относительно базовых позиций (nameTextView=160dp, onlineTextView=195dp)
-                        float targetNameX = AndroidUtilities.dp(56f) - (nameTextView[1] != null ? nameTextView[1].getLeft() : 0); // Отступ от стрелки "назад"
-                        float targetNameY = AndroidUtilities.dp(35f) - AndroidUtilities.dp(160f); // 65dp от верха экрана - 160dp базовая позиция = -95dp
-                        float targetOnlineX = AndroidUtilities.dp(56f) - (onlineTextView[1] != null ? onlineTextView[1].getLeft() : 0);
-                        float targetOnlineY = AndroidUtilities.dp(55f) - AndroidUtilities.dp(195f); // 85dp от верха экрана - 195dp базовая позиция = -110dp
+                        // ИМЁ И СТАТУС: плавное перемещение к позиции кнопки "назад" при скролле
+                        // Динамически вычисляем позицию кнопки "назад" для точного выравнивания
+                        float actionBarTop = actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0;
+                        float backButtonRight = actionBar.getBackButton() != null ? actionBar.getBackButton().getRight() : AndroidUtilities.dp(56f);
+                        float actionBarCenterY = actionBarTop + (actionBar.getHeight() - actionBarTop) / 2f;
+                        
+                        // X позиция: сразу после кнопки "назад" + небольшой отступ
+                        float targetNameX = backButtonRight + AndroidUtilities.dp(8f);
+                        // Y позиция: центр ActionBar для имени, чуть ниже для статуса
+                        float targetNameY = (actionBarCenterY - AndroidUtilities.dp(8f)) - AndroidUtilities.dp(160f); // Центр ActionBar минус базовая позиция
+                        
+                        float targetOnlineX = targetNameX; // Тот же X что и имя
+                        float targetOnlineY = (actionBarCenterY + AndroidUtilities.dp(12f)) - AndroidUtilities.dp(195f); // Чуть ниже имени
                             
                         // Плавная интерполяция позиций с упрощенным прогрессом
                         float currentNameX = AndroidUtilities.lerp(0f, targetNameX, scrollProgress);
@@ -8527,24 +8555,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             int buttonsHeight = AndroidUtilities.dp(56);
                             int buttonsBottomMargin = AndroidUtilities.dp(16);
                             
-                            // Кнопки всегда позиционируются от нижней границы верхнего блока
-                            int targetButtonsY = (int) (topBlockHeight - buttonsHeight - buttonsBottomMargin);
-                            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
+                            // Привязываем НИЗ кнопок к границе, а не центр
+                            int desiredBottomY = (int) (topBlockHeight - buttonsBottomMargin);
+                            int buttonsTopY = desiredBottomY - buttonsHeight;
+                            int minButtonsY = AndroidUtilities.dp(150); // Ниже граница сжатия
                             
                             // Плавное позиционирование без резких переходов
-                            actionParams.topMargin = Math.max(targetButtonsY, minButtonsY);
-                            actionsContainer.requestLayout();
+                            actionParams.topMargin = Math.max(buttonsTopY, minButtonsY);
                             
                             // В стандартном состоянии кнопки всегда в полном размере
                             actionsContainer.setScaleX(1f);
                             actionsContainer.setScaleY(1f);
                             actionsContainer.setPivotY(0);
                             actionsContainer.setAlpha(1f);
+                            actionsContainer.requestLayout();
                             
                             if (BuildVars.LOGS_ENABLED) {
                                 FileLog.d("ProfileActivity: Standard buttons sync - topBlockHeight=" + topBlockHeight + 
-                                         ", buttonsY=" + actionParams.topMargin + ", extraHeight=" + extraHeight + 
-                                         ", targetY=" + targetButtonsY + ", minY=" + minButtonsY);
+                                         ", desiredBottomY=" + desiredBottomY + ", buttonsTopY=" + buttonsTopY + 
+                                         ", finalTopMargin=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
                             }
                         }
                         
@@ -8709,27 +8738,148 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void refreshNameAndOnlineXY() {
-        // В стандартном состоянии элементы остаются в базовых позициях (nameTextView=160dp, onlineTextView=195dp)
-        if (!isPulledDown) {
-            // Стандартные translation-значения для центрированного профиля
-            // Translation = 0 означает остаться в базовой позиции (160dp для имени, 195dp для статуса)
+        // Определяем состояние профиля на основе extraHeight
+        final float standardHeight = AndroidUtilities.dp(330f);
+        final boolean isStandard = extraHeight <= standardHeight && !isPulledDown;
+        final boolean isExpanded = extraHeight > standardHeight || isPulledDown;
+        
+        if (isStandard) {
+            // СТАНДАРТНОЕ СОСТОЯНИЕ: тексты центрированы
             nameX = 0; // По центру горизонтально
             nameY = 0; // Остается на базовой позиции 160dp
             onlineX = 0; // По центру горизонтально
             onlineY = 0; // Остается на базовой позиции 195dp
             
-            if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Standard text translations - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+            // Возвращаем центральное выравнивание для стандартного состояния
+            for (int a = 0; a < nameTextView.length; a++) {
+                if (nameTextView[a] != null) {
+                    nameTextView[a].setGravity(Gravity.CENTER);
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) nameTextView[a].getLayoutParams();
+                    params.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
+                    // Восстанавливаем исходную ширину для стандартного состояния
+                    if (a == 0) {
+                        params.width = LayoutHelper.WRAP_CONTENT; // или initialTitleWidth
+                    } else {
+                        params.width = LayoutHelper.WRAP_CONTENT;
+                    }
+                    params.leftMargin = 0;
+                    params.rightMargin = 0;
+                    nameTextView[a].requestLayout();
+                }
+                if (a < onlineTextView.length && onlineTextView[a] != null) {
+                    onlineTextView[a].setGravity(Gravity.CENTER);
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) onlineTextView[a].getLayoutParams();
+                    params.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
+                    params.width = LayoutHelper.WRAP_CONTENT;
+                    params.leftMargin = 0;
+                    params.rightMargin = 0;
+                    onlineTextView[a].requestLayout();
+                }
             }
-        } else {
-            // В развёрнутом состоянии (isPulledDown=true) сдвигаем текст слева и высоко
-            nameX = AndroidUtilities.dp(16f); // Фиксированный отступ от левого края
-            nameY = extraHeight + avatarY - AndroidUtilities.dp(300f); // Позиция имени ОЧЕНЬ высоко в развернутом блоке
-            onlineX = AndroidUtilities.dp(16f); // Тот же отступ для статуса
-            onlineY = nameY + AndroidUtilities.dp(30f); // Статус под именем с большим отступом
             
             if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("ProfileActivity: Expanded text positions - nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+                FileLog.d("ProfileActivity: Standard state - centered text, extraHeight=" + extraHeight);
+            }
+        } else if (isExpanded) {
+            // РАСШИРЕННОЕ СОСТОЯНИЕ (включая максимальное): тексты сбоку
+            nameX = AndroidUtilities.dp(16f); // Фиксированный отступ от левого края для имени
+            onlineX = AndroidUtilities.dp(16f); // Тот же отступ для статуса
+            
+            // Изменяем gravity текста на левое выравнивание для расширенного состояния
+            for (int a = 0; a < nameTextView.length; a++) {
+                if (nameTextView[a] != null) {
+                    nameTextView[a].setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) nameTextView[a].getLayoutParams();
+                    params.gravity = Gravity.LEFT | Gravity.TOP;
+                    params.width = LayoutHelper.MATCH_PARENT; // Используем полную ширину
+                    params.leftMargin = 0;
+                    params.rightMargin = 0;
+                    nameTextView[a].requestLayout();
+                }
+                if (a < onlineTextView.length && onlineTextView[a] != null) {
+                    onlineTextView[a].setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) onlineTextView[a].getLayoutParams();
+                    params.gravity = Gravity.LEFT | Gravity.TOP;
+                    params.width = LayoutHelper.MATCH_PARENT; // Используем полную ширину
+                    params.leftMargin = 0;
+                    params.rightMargin = 0;
+                    onlineTextView[a].requestLayout();
+                }
+            }
+            
+            // Привязываем текст к низу верхнего блока, как кнопки
+            float topBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+            
+            // Позиционируем текст над кнопками с небольшим отступом
+            int textFromBottom = AndroidUtilities.dp(150); // Расстояние от низа верхнего блока
+            nameY = topBlockHeight - AndroidUtilities.dp(160) - textFromBottom; // 160dp - базовая позиция nameTextView
+            onlineY = nameY;
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Expanded state - side text, extraHeight=" + extraHeight + 
+                         ", nameX=" + nameX + ", nameY=" + nameY + ", onlineX=" + onlineX + ", onlineY=" + onlineY);
+            }
+        }
+        
+        // Сбрасываем marquee анимацию при смене состояний и принудительно пересчитываем layout
+        for (int a = 0; a < nameTextView.length; a++) {
+            if (nameTextView[a] != null) {
+                nameTextView[a].resetScrolling();
+                // Принудительно пересчитываем layout чтобы textDoesNotFit обновился
+                nameTextView[a].setText(nameTextView[a].getText(), true);
+            }
+        }
+        
+        // ОБНОВЛЯЕМ КНОПКИ И ТЕНЬ ДЛЯ ВСЕХ СОСТОЯНИЙ
+        updateButtonsAndShadowPosition();
+    }
+    
+    private void updateButtonsAndShadowPosition() {
+        // Синхронизация кнопок с нижней границей верхнего блока для всех состояний
+        if (actionsContainer != null) {
+            FrameLayout.LayoutParams actionParams = (FrameLayout.LayoutParams) actionsContainer.getLayoutParams();
+            
+            // Вычисляем позицию кнопок от нижней границы верхнего блока
+            float topBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+            int buttonsHeight = AndroidUtilities.dp(56);
+            int buttonsBottomMargin = AndroidUtilities.dp(16);
+            
+            // Привязываем НИЗ кнопок к границе, а не центр
+            int desiredBottomY = (int) (topBlockHeight - buttonsBottomMargin); // Где должен быть низ кнопок
+            int buttonsTopY = desiredBottomY - buttonsHeight; // Позиция верха кнопок
+            int minButtonsY = AndroidUtilities.dp(180); // Минимум ниже аватара
+            
+            // Используем max чтобы кнопки не заходили под аватар
+            actionParams.topMargin = Math.max(buttonsTopY, AndroidUtilities.dp(150)); // Ниже граница сжатия
+            
+            // Сбрасываем масштаб кнопок в нормальном состоянии
+            actionsContainer.setScaleX(1f);
+            actionsContainer.setScaleY(1f);
+            actionsContainer.setPivotY(0);
+            actionsContainer.setAlpha(1f);
+            actionsContainer.requestLayout();
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Updated buttons position - topBlockHeight=" + topBlockHeight + 
+                         ", desiredBottomY=" + desiredBottomY + ", buttonsTopY=" + buttonsTopY + 
+                         ", finalTopMargin=" + actionParams.topMargin + ", extraHeight=" + extraHeight);
+            }
+        }
+        
+        // Обновляем блок тени для всех состояний (если он активен)
+        if (expandedTextBackgroundView != null && expandedTextBackgroundView.getVisibility() == View.VISIBLE) {
+            FrameLayout.LayoutParams backgroundParams = (FrameLayout.LayoutParams) expandedTextBackgroundView.getLayoutParams();
+            
+            int shadowBlockHeight = AndroidUtilities.dp(160);
+            float upperBlockHeight = extraHeight + (ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0));
+            
+            backgroundParams.topMargin = Math.max(0, (int) (upperBlockHeight - shadowBlockHeight));
+            backgroundParams.height = shadowBlockHeight;
+            expandedTextBackgroundView.requestLayout();
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: Updated shadow position - upperBlockHeight=" + upperBlockHeight + 
+                         ", shadowTop=" + backgroundParams.topMargin);
             }
         }
     }
@@ -8747,48 +8897,33 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
 
+        // Простая логика ширины - берем ширину верхнего блока минус отступы
         int viewWidth = AndroidUtilities.isTablet() ? AndroidUtilities.dp(490) : AndroidUtilities.displaySize.x;
-        ActionBarMenuItem item = avatarsViewPagerIndicatorView.getSecondaryMenuItem();
-        int extra = 0;
-        if (editItemVisible) {
-            extra += 48;
-        }
-        if (callItemVisible) {
-            extra += 48;
-        }
-        if (videoCallItemVisible) {
-            extra += 48;
-        }
-        if (searchItem != null) {
-            extra += 48;
-        }
-        int buttonsWidth = AndroidUtilities.dp(118 + 8 + (40 + extra * (1.0f - mediaHeaderAnimationProgress)));
-        int minWidth = viewWidth - buttonsWidth;
-
-        int width = (int) (viewWidth - buttonsWidth * Math.max(0.0f, 1.0f - (diff != 1.0f ? diff * 0.15f / (1.0f - diff) : 1.0f)) - nameTextView[1].getTranslationX());
-        float width2 = nameTextView[1].getPaint().measureText(nameTextView[1].getText().toString()) * scale + nameTextView[1].getSideDrawablesSize();
+        
+        // Устанавливаем фиксированную ширину для стабильной работы marquee
+        int textWidth = viewWidth - AndroidUtilities.dp(50); // Ширина экрана минус 50dp отступов
+        
+        // Для nameTextView
         layoutParams = (FrameLayout.LayoutParams) nameTextView[1].getLayoutParams();
         int prevWidth = layoutParams.width;
-        if (width < width2) {
-            layoutParams.width = Math.max(minWidth, (int) Math.ceil((width - AndroidUtilities.dp(24)) / (scale + ((maxScale - scale) * 7.0f))));
-        } else {
-            layoutParams.width = (int) Math.ceil(width2);
-        }
-        layoutParams.width = (int) Math.min((viewWidth - nameTextView[1].getX()) / scale - AndroidUtilities.dp(8), layoutParams.width);
+        layoutParams.width = textWidth;
         if (layoutParams.width != prevWidth) {
             nameTextView[1].requestLayout();
+            
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("ProfileActivity: needLayoutText - fixedTextWidth=" + textWidth + 
+                         ", viewWidth=" + viewWidth + ", extraHeight=" + extraHeight);
+            }
         }
 
-        width2 = onlineTextView[1].getPaint().measureText(onlineTextView[1].getText().toString()) + onlineTextView[1].getRightDrawableWidth();
+        // Для onlineTextView  
         layoutParams = (FrameLayout.LayoutParams) onlineTextView[1].getLayoutParams();
         FrameLayout.LayoutParams layoutParams2 = (FrameLayout.LayoutParams) mediaCounterTextView.getLayoutParams();
         prevWidth = layoutParams.width;
-        layoutParams2.rightMargin = layoutParams.rightMargin = (int) Math.ceil(onlineTextView[1].getTranslationX() + AndroidUtilities.dp(8) + AndroidUtilities.dp(40) * (1.0f - diff));
-        if (width < width2) {
-            layoutParams2.width = layoutParams.width = (int) Math.ceil(width);
-        } else {
-            layoutParams2.width = layoutParams.width = LayoutHelper.WRAP_CONTENT;
-        }
+        
+        layoutParams2.rightMargin = layoutParams.rightMargin = 0; // Убираем сложные отступы
+        layoutParams2.width = layoutParams.width = textWidth;
+        
         if (prevWidth != layoutParams.width) {
             onlineTextView[2].getLayoutParams().width = layoutParams.width;
             onlineTextView[2].requestLayout();
